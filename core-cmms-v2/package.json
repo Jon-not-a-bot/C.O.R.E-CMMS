@@ -1,0 +1,15 @@
+{
+  "name": "core-cmms",
+  "version": "1.0.0",
+  "description": "C.O.R.E. CMMS — Conditions Operations Reliability Engineering",
+  "scripts": {
+    "install-all": "npm install --prefix server && npm install --prefix client",
+    "build": "npm run build --prefix client",
+    "start": "node server/index.js",
+    "dev-server": "npm run dev --prefix server",
+    "dev-client": "npm start --prefix client"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
