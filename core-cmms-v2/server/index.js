@@ -36,3 +36,4 @@ async function initDB() {
         pm_frequency      VARCHAR(100),
         last_pm_date      DATE,
         next_p
+});
