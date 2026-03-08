@@ -1,81 +1,37 @@
 const express = require('express');
-const router = express.Router();
-const multer = require('multer');
-const upload = multer({ storage: multer.memoryStorage() });
+const cors = require('cors');
+const { Pool } = require('pg');
+require('dotenv').config();
 
-// POST /api/scan-nameplate
-// Accepts an image, sends to Claude vision, returns extracted fields
-router.post('/', upload.single('image'), async (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'No image provided' });
+const app = express();
+const PORT = process.env.PORT || 5000;
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not configured' });
+const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false });
 
-  try {
-    const base64Image = req.file.buffer.toString('base64');
-    const mediaType = req.file.mimetype || 'image/jpeg';
+app.locals.db = pool;
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model: 'claude-opus-4-5',
-        max_tokens: 1024,
-        messages: [{
-          role: 'user',
-          content: [
-            {
-              type: 'image',
-              source: { type: 'base64', media_type: mediaType, data: base64Image }
-            },
-            {
-              type: 'text',
-              text: `You are reading an equipment nameplate or ID plate. Extract all visible information and return ONLY a JSON object with these exact keys (use null for anything not visible):
+app.use(cors());
+app.use(express.json());
 
-{
-  "manufacturer": "company name",
-  "model": "model number or name",
-  "serial_number": "serial number",
-  "install_date": "YYYY-MM-DD format if visible, otherwise null",
-  "name": "best guess at equipment name/type (e.g. 'Sit-Down Forklift', 'HVAC Unit', 'Electric Motor')",
-  "notes": "any other useful technical specs visible (voltage, HP, capacity, refrigerant, weight, etc)"
+async function initDB() {
+  await pool.query(`CREATE TABLE IF NOT EXISTS assets (id SERIAL PRIMARY KEY, asset_id VARCHAR(50), name VARCHAR(255) NOT NULL, category VARCHAR(100), subcategory VARCHAR(100), location VARCHAR(100), criticality CHAR(1) DEFAULT 'B', manufacturer VARCHAR(100), model VARCHAR(100), serial_number VARCHAR(100), install_date DATE, warranty_expiry DATE, condition VARCHAR(50) DEFAULT 'Good', pm_frequency VARCHAR(50), last_pm_date DATE, next_pm_date DATE, assigned_tech VARCHAR(100), management_type VARCHAR(50) DEFAULT 'In-House', vendor_name VARCHAR(100), notes TEXT, photos JSONB DEFAULT '[]', created_at TIMESTAMP DEFAULT NOW(), updated_at TIMESTAMP DEFAULT NOW())`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS work_orders (id SERIAL PRIMARY KEY, wo_number VARCHAR(20) UNIQUE, title VARCHAR(255) NOT NULL, description TEXT, type VARCHAR(50) DEFAULT 'Repair', priority VARCHAR(20) DEFAULT 'Medium', status VARCHAR(20) DEFAULT 'Open', category VARCHAR(100) DEFAULT 'General', asset_id INTEGER REFERENCES assets(id) ON DELETE SET NULL, location VARCHAR(100), due_date DATE, assigned_to VARCHAR(100), requester_name VARCHAR(100), source VARCHAR(20) DEFAULT 'Internal', resolution_notes TEXT, photos JSONB DEFAULT '[]', closed_at TIMESTAMP, created_at TIMESTAMP DEFAULT NOW(), updated_at TIMESTAMP DEFAULT NOW())`);
+  console.log('Database initialized');
 }
 
-Return ONLY the JSON object, no other text.`
-            }
-          ]
-        }]
-      })
-    });
+initDB().catch(console.error);
 
-    const data = await response.json();
+const assetsRouter = require('./routes/assets');
+const scanRouter = require('./routes/scan');
+const workOrdersRouter = require('./routes/workorders');
 
-    if (!response.ok) {
-      console.error('Claude API error:', data);
-      return res.status(500).json({ error: 'Vision API error', detail: data.error?.message });
-    }
+app.use('/api/assets', assetsRouter);
+app.use('/api/scan-nameplate', scanRouter);
+app.use('/api/workorders', workOrdersRouter);
 
-    const text = data.content[0]?.text || '';
-
-    // Parse JSON from response
-    let extracted = {};
-    try {
-      const clean = text.replace(/```json|```/g, '').trim();
-      extracted = JSON.parse(clean);
-    } catch (e) {
-      return res.status(500).json({ error: 'Could not parse nameplate data', raw: text });
-    }
-
-    res.json({ success: true, fields: extracted });
-
-  } catch (err) {
-    console.error('Scan error:', err);
-    res.status(500).json({ error: err.message });
-  }
+app.get('/api/health', async (req, res) => {
+  try { await pool.query('SELECT 1'); res.json({ status: 'ok', database: 'connected' }); }
+  catch (e) { res.status(500).json({ status: 'error', database: 'disconnected' }); }
 });
 
-module.exports = router;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
