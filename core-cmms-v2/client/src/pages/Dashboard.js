@@ -1,5 +1,6 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../AuthContext';
 
 const API = process.env.REACT_APP_API_URL || '';
 const NAVY = '#1B2D4F';
@@ -35,14 +36,20 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
   const navigate = useNavigate();
+  const { authFetch } = useAuth();
   const time = useClock();
   const wx = useWeather();
 
   useEffect(() => {
     Promise.all([
-      fetch(`${API}/api/assets`).then(r => r.json()).catch(() => []),
-      fetch(`${API}/api/workorders`).then(r => r.json()).catch(() => [])
-    ]).then(([a, w]) => { setAssets(a); setWos(w); setLoading(false); });
+      authFetch(`${API}/api/assets`).then(r => r.json()).catch(() => []),
+      authFetch(`${API}/api/workorders`).then(r => r.json()).catch(() => [])
+    ]).then(([a, w]) => {
+      // Guard: ensure we always have arrays even if API returns an error object
+      setAssets(Array.isArray(a) ? a : []);
+      setWos(Array.isArray(w) ? w : []);
+      setLoading(false);
+    });
   }, []);
 
   const copyRequestLink = () => {
@@ -155,7 +162,6 @@ export default function Dashboard() {
             <div style={{ fontSize:12, color:'#64748b', marginTop:4 }}>{k.label}</div>
           </div>
         ))}
-        {/* Request Link Button */}
         <button onClick={copyRequestLink} style={{ background:copied?'#f0fdf4':NAVY, border:`2px solid ${copied?'#22c55e':NAVY}`, borderRadius:10, padding:'14px 20px', cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:4, transition:'all 0.2s', minWidth:130 }}>
           <span style={{ fontSize:20 }}>{copied?'✅':'🔗'}</span>
           <span style={{ fontSize:12, fontWeight:700, color:copied?'#16a34a':'#fff', whiteSpace:'nowrap' }}>{copied?'Copied!':'Copy Request Link'}</span>
