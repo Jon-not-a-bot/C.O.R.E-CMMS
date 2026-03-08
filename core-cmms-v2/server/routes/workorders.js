@@ -1,120 +1,96 @@
-import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+const express = require('express');
+const router = express.Router();
+const cloudinary = require('cloudinary').v2;
+const multer = require('multer');
+const { CloudinaryStorage } = require('multer-storage-cloudinary');
 
-const API = process.env.REACT_APP_API_URL || '';
-const NAVY = '#1B2D4F';
-const BLUE = '#3AACDC';
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
+});
 
-const PRIORITY_COLORS = { Emergency: '#ef4444', High: '#f59e0b', Medium: '#3AACDC', Low: '#22c55e' };
-const STATUS_COLORS = { Open: '#ef4444', 'In Progress': '#f59e0b', 'On Hold': '#8b5cf6', Closed: '#22c55e' };
+const storage = new CloudinaryStorage({
+  cloudinary,
+  params: { folder: 'core-cmms/workorders', allowed_formats: ['jpg', 'jpeg', 'png', 'webp'] }
+});
+const upload = multer({ storage });
 
-export default function WorkOrders() {
-  const [wos, setWos] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [filterStatus, setFilterStatus] = useState('');
-  const [filterPriority, setFilterPriority] = useState('');
-  const [search, setSearch] = useState('');
-  const navigate = useNavigate();
+const CATEGORY_ASSIGNMENTS = {
+  'PIT Fleet': 'PIT Tech',
+  'Dock Equipment': 'Dock Tech',
+  'HVAC & Heating': 'HVAC Tech',
+  'Electrical': 'Electrical Tech',
+  'Life Safety': 'Safety Tech',
+  'Building Envelope': 'Facilities Tech',
+  'Utilities': 'Facilities Tech',
+  'General': 'Facilities Tech'
+};
 
-  useEffect(() => {
-    fetch(`${API}/api/workorders`)
-      .then(r => r.json())
-      .then(data => { setWos(data); setLoading(false); })
-      .catch(() => setLoading(false));
-  }, []);
+router.get('/', async (req, res) => {
+  const db = req.app.locals.db;
+  try {
+    const { status, priority } = req.query;
+    let query = `SELECT wo.*, a.name as asset_name, a.category as asset_category, a.location as asset_location FROM work_orders wo LEFT JOIN assets a ON wo.asset_id = a.id WHERE 1=1`;
+    const params = [];
+    let idx = 1;
+    if (status) { query += ` AND wo.status = $${idx++}`; params.push(status); }
+    if (priority) { query += ` AND wo.priority = $${idx++}`; params.push(priority); }
+    query += " ORDER BY CASE wo.priority WHEN 'Emergency' THEN 1 WHEN 'High' THEN 2 WHEN 'Medium' THEN 3 WHEN 'Low' THEN 4 END, wo.created_at DESC";
+    const result = await db.query(query, params);
+    res.json(result.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
 
-  const filtered = wos.filter(w => {
-    const q = search.toLowerCase();
-    const matchSearch = !q || w.title.toLowerCase().includes(q) || (w.wo_number || '').toLowerCase().includes(q) || (w.location || '').toLowerCase().includes(q);
-    const matchStatus = !filterStatus || w.status === filterStatus;
-    const matchPriority = !filterPriority || w.priority === filterPriority;
-    return matchSearch && matchStatus && matchPriority;
-  });
+router.get('/meta/stats', async (req, res) => {
+  const db = req.app.locals.db;
+  try {
+    const open = await db.query("SELECT COUNT(*) FROM work_orders WHERE status NOT IN ('Closed')");
+    const overdue = await db.query("SELECT COUNT(*) FROM work_orders WHERE due_date < NOW() AND status NOT IN ('Closed')");
+    const byStatus = await db.query("SELECT status, COUNT(*) FROM work_orders GROUP BY status");
+    const byPriority = await db.query("SELECT priority, COUNT(*) FROM work_orders GROUP BY priority");
+    res.json({ open: parseInt(open.rows[0].count), overdue: parseInt(overdue.rows[0].count), byStatus: byStatus.rows, byPriority: byPriority.rows });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
 
-  const open = wos.filter(w => w.status !== 'Closed').length;
-  const emergency = wos.filter(w => w.priority === 'Emergency' && w.status !== 'Closed').length;
+router.get('/:id', async (req, res) => {
+  const db = req.app.locals.db;
+  try {
+    const result = await db.query(`SELECT wo.*, a.name as asset_name, a.category as asset_category, a.location as asset_location FROM work_orders wo LEFT JOIN assets a ON wo.asset_id = a.id WHERE wo.id = $1`, [req.params.id]);
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(result.rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
 
-  if (loading) return <div style={{ padding: 40, color: '#64748b', textAlign: 'center' }}>Loading work orders...</div>;
+router.post('/', upload.array('photos', 5), async (req, res) => {
+  const db = req.app.locals.db;
+  try {
+    const { title, description, type, priority, asset_id, location, due_date, requester_name, source, category } = req.body;
+    const photos = req.files ? req.files.map(f => f.path) : [];
+    const assigned_to = CATEGORY_ASSIGNMENTS[category] || CATEGORY_ASSIGNMENTS['General'];
+    const wo_number = `WO-${Date.now().toString().slice(-6)}`;
+    const result = await db.query(`INSERT INTO work_orders (wo_number, title, description, type, priority, status, asset_id, location, due_date, assigned_to, requester_name, source, photos, category) VALUES ($1,$2,$3,$4,$5,'Open',$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+      [wo_number, title, description, type || 'Repair', priority || 'Medium', asset_id || null, location, due_date || null, assigned_to, requester_name || 'CORE User', source || 'Internal', JSON.stringify(photos), category || 'General']);
+    res.status(201).json(result.rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
 
-  return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-        <div>
-          <h1 style={{ color: NAVY, fontSize: 24, fontWeight: 700, margin: 0 }}>Work Orders</h1>
-          <p style={{ color: '#64748b', margin: '4px 0 0', fontSize: 14 }}>{open} open · {emergency > 0 ? <span style={{ color: '#ef4444' }}>{emergency} emergency</span> : '0 emergency'}</p>
-        </div>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button onClick={() => window.open('/request', '_blank')}
-            style={{ background: '#fff', color: NAVY, border: `1px solid ${NAVY}`, borderRadius: 8, padding: '9px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-            🔗 Request Link
-          </button>
-          <button onClick={() => navigate('/workorders/new')}
-            style={{ background: BLUE, color: '#fff', border: 'none', borderRadius: 8, padding: '10px 20px', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
-            + New Work Order
-          </button>
-        </div>
-      </div>
+router.put('/:id', async (req, res) => {
+  const db = req.app.locals.db;
+  try {
+    const { title, description, type, priority, status, asset_id, location, due_date, assigned_to, resolution_notes, category } = req.body;
+    const result = await db.query(`UPDATE work_orders SET title=$1, description=$2, type=$3, priority=$4, status=$5, asset_id=$6, location=$7, due_date=$8, assigned_to=$9, resolution_notes=$10, category=$11, closed_at=${status === 'Closed' ? 'NOW()' : 'closed_at'}, updated_at=NOW() WHERE id=$12 RETURNING *`,
+      [title, description, type, priority, status, asset_id || null, location, due_date || null, assigned_to, resolution_notes, category || 'General', req.params.id]);
+    res.json(result.rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
 
-      <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search work orders..."
-          style={{ flex: 1, minWidth: 200, padding: '9px 14px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 14, outline: 'none' }} />
-        <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
-          style={{ padding: '9px 14px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 14, background: '#fff', cursor: 'pointer' }}>
-          <option value="">All Statuses</option>
-          {['Open', 'In Progress', 'On Hold', 'Closed'].map(s => <option key={s}>{s}</option>)}
-        </select>
-        <select value={filterPriority} onChange={e => setFilterPriority(e.target.value)}
-          style={{ padding: '9px 14px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 14, background: '#fff', cursor: 'pointer' }}>
-          <option value="">All Priorities</option>
-          {['Emergency', 'High', 'Medium', 'Low'].map(p => <option key={p}>{p}</option>)}
-        </select>
-      </div>
+router.delete('/:id', async (req, res) => {
+  const db = req.app.locals.db;
+  try {
+    await db.query('DELETE FROM work_orders WHERE id = $1', [req.params.id]);
+    res.json({ message: 'Deleted' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
 
-      <div style={{ background: '#fff', borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ background: NAVY }}>
-              {['WO #', 'Title', 'Priority', 'Status', 'Asset', 'Location', 'Assigned To', 'Due', 'Source'].map(h => (
-                <th key={h} style={{ padding: '12px 16px', color: '#cbd5e1', fontSize: 12, fontWeight: 600, textAlign: 'left', textTransform: 'uppercase', letterSpacing: 0.5 }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.length === 0 ? (
-              <tr><td colSpan={9} style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>
-                {wos.length === 0 ? 'No work orders yet.' : 'No work orders match your filters.'}
-              </td></tr>
-            ) : filtered.map((w, i) => {
-              const due = w.due_date ? new Date(w.due_date) : null;
-              const overdue = due && due < new Date() && w.status !== 'Closed';
-              return (
-                <tr key={w.id} onClick={() => navigate(`/workorders/${w.id}`)}
-                  style={{ borderBottom: '1px solid #f1f5f9', cursor: 'pointer', background: i % 2 === 0 ? '#fff' : '#fafafa' }}
-                  onMouseEnter={e => e.currentTarget.style.background = '#f0f9ff'}
-                  onMouseLeave={e => e.currentTarget.style.background = i % 2 === 0 ? '#fff' : '#fafafa'}>
-                  <td style={{ padding: '12px 16px', fontSize: 12, color: '#94a3b8', fontFamily: 'monospace' }}>{w.wo_number}</td>
-                  <td style={{ padding: '12px 16px', fontSize: 14, fontWeight: 600, color: '#1e293b' }}>{w.title}</td>
-                  <td style={{ padding: '12px 16px' }}>
-                    <span style={{ background: (PRIORITY_COLORS[w.priority] || '#94a3b8') + '20', color: PRIORITY_COLORS[w.priority] || '#94a3b8', fontWeight: 700, fontSize: 12, padding: '2px 10px', borderRadius: 20 }}>{w.priority}</span>
-                  </td>
-                  <td style={{ padding: '12px 16px' }}>
-                    <span style={{ background: (STATUS_COLORS[w.status] || '#94a3b8') + '20', color: STATUS_COLORS[w.status] || '#94a3b8', fontSize: 12, padding: '2px 8px', borderRadius: 20 }}>{w.status}</span>
-                  </td>
-                  <td style={{ padding: '12px 16px', fontSize: 13, color: '#475569' }}>{w.asset_name || '—'}</td>
-                  <td style={{ padding: '12px 16px', fontSize: 13, color: '#475569' }}>{w.location || '—'}</td>
-                  <td style={{ padding: '12px 16px', fontSize: 13, color: '#475569' }}>{w.assigned_to || '—'}</td>
-                  <td style={{ padding: '12px 16px', fontSize: 12, color: overdue ? '#ef4444' : '#64748b', fontWeight: overdue ? 700 : 400 }}>
-                    {due ? due.toLocaleDateString() : '—'}
-                  </td>
-                  <td style={{ padding: '12px 16px' }}>
-                    <span style={{ background: w.source === 'Request' ? '#fef3c7' : '#f1f5f9', color: w.source === 'Request' ? '#d97706' : '#64748b', fontSize: 11, padding: '2px 8px', borderRadius: 20 }}>{w.source || 'Internal'}</span>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
+module.exports = router;
