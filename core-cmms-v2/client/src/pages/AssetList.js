@@ -1,125 +1,258 @@
-import React, { useEffect, useState } from 'react';
-import axios from 'axios';
+import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-const NAV = '#1B2D4F';
+const API = process.env.REACT_APP_API_URL || '';
+const NAVY = '#1B2D4F';
 const BLUE = '#3AACDC';
-const CRIT_COLORS = { A: '#ef4444', B: '#f59e0b', C: '#22c55e' };
-const CRIT_LABELS = { A: 'Critical', B: 'Important', C: 'Standard' };
+const LAT = 40.2776;
+const LON = -75.3849;
 
-const CATEGORIES = ['All', 'PIT Fleet', 'Dock Equipment', 'HVAC & Heating', 'Electrical', 'Life Safety', 'Building Envelope', 'Utilities'];
+const WX_CODES = {0:'Clear',1:'Mostly Clear',2:'Partly Cloudy',3:'Overcast',45:'Fog',48:'Icy Fog',51:'Light Drizzle',53:'Drizzle',55:'Heavy Drizzle',61:'Light Rain',63:'Rain',65:'Heavy Rain',71:'Light Snow',73:'Snow',75:'Heavy Snow',77:'Snow Grains',80:'Light Showers',81:'Showers',82:'Heavy Showers',85:'Snow Showers',86:'Heavy Snow Showers',95:'Thunderstorm',96:'Thunderstorm w/ Hail',99:'Thunderstorm w/ Heavy Hail'};
+const WX_ICONS = {0:'☀️',1:'🌤️',2:'⛅',3:'☁️',45:'🌫️',48:'🌫️',51:'🌦️',53:'🌦️',55:'🌧️',61:'🌦️',63:'🌧️',65:'🌧️',71:'🌨️',73:'❄️',75:'❄️',77:'❄️',80:'🌦️',81:'🌧️',82:'⛈️',85:'🌨️',86:'🌨️',95:'⛈️',96:'⛈️',99:'⛈️'};
+const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const PRIORITY_COLORS = { Emergency:'#ef4444', High:'#f59e0b', Medium:'#3AACDC', Low:'#22c55e' };
 
-export default function AssetList() {
+function useClock() {
+  const [time, setTime] = useState(new Date());
+  useEffect(() => { const t = setInterval(() => setTime(new Date()), 1000); return () => clearInterval(t); }, []);
+  return time;
+}
+
+function useWeather() {
+  const [wx, setWx] = useState(null);
+  useEffect(() => {
+    fetch(`https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m&daily=weather_code,temperature_2m_max,temperature_2m_min&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America%2FNew_York&forecast_days=7`)
+      .then(r => r.json()).then(setWx).catch(() => {});
+  }, []);
+  return wx;
+}
+
+function WindDir(deg) { return ['N','NE','E','SE','S','SW','W','NW'][Math.round(deg/45)%8]; }
+
+export default function Dashboard() {
   const [assets, setAssets] = useState([]);
+  const [wos, setWos] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [filterCat, setFilterCat] = useState('All');
-  const [filterCrit, setFilterCrit] = useState('All');
+  const [copied, setCopied] = useState(false);
   const navigate = useNavigate();
+  const time = useClock();
+  const wx = useWeather();
 
-  const fetchAssets = async () => {
-    setLoading(true);
-    try {
-      const params = {};
-      if (search) params.search = search;
-      if (filterCat !== 'All') params.category = filterCat;
-      if (filterCrit !== 'All') params.criticality = filterCrit;
-      const res = await axios.get('/api/assets', { params });
-      setAssets(res.data);
-    } catch (err) {
-      console.error(err);
-    }
-    setLoading(false);
+  useEffect(() => {
+    Promise.all([
+      fetch(`${API}/api/assets`).then(r => r.json()).catch(() => []),
+      fetch(`${API}/api/workorders`).then(r => r.json()).catch(() => [])
+    ]).then(([a, w]) => { setAssets(a); setWos(w); setLoading(false); });
+  }, []);
+
+  const copyRequestLink = () => {
+    const url = window.location.origin + '/request';
+    navigator.clipboard.writeText(url).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2500); });
   };
 
-  useEffect(() => { fetchAssets(); }, [search, filterCat, filterCrit]);
+  const now = new Date();
+  const total = assets.length;
+  const critA = assets.filter(a => a.criticality === 'A').length;
+  const offlineAssets = assets.filter(a => a.condition === 'Critical' || a.condition === 'Poor');
+  const overduePM = assets.filter(a => a.next_pm_date && new Date(a.next_pm_date) < now).length;
+
+  const totalPossibleUptime = total * 100;
+  const downtimePoints = offlineAssets.reduce((acc, a) => acc + (a.condition === 'Critical' ? 100 : 40), 0);
+  const uptimePct = total > 0 ? Math.max(0, Math.round(((totalPossibleUptime - downtimePoints) / totalPossibleUptime) * 100)) : 100;
+
+  const openWOs = wos.filter(w => w.status !== 'Closed');
+  const newWOs = wos.filter(w => (now - new Date(w.created_at)) < 12 * 60 * 60 * 1000 && w.status !== 'Closed');
+  const staleWOs = wos.filter(w => (now - new Date(w.created_at)) > 5 * 24 * 60 * 60 * 1000 && w.status !== 'Closed');
+  const emergencyWOs = openWOs.filter(w => w.priority === 'Emergency');
+
+  const categories = {};
+  assets.forEach(a => { categories[a.category] = (categories[a.category] || 0) + 1; });
+
+  const cur = wx?.current;
+  const daily = wx?.daily;
+
+  if (loading) return <div style={{ padding:40, color:'#64748b', textAlign:'center' }}>Loading C.O.R.E. data...</div>;
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-        <div>
-          <h1 style={{ fontSize: 22, fontWeight: 800, color: NAV }}>Asset Registry</h1>
-          <p style={{ color: '#64748b', fontSize: 13, marginTop: 2 }}>{assets.length} assets</p>
+      <div style={{ marginBottom:20 }}>
+        <h1 style={{ color:NAVY, fontSize:22, fontWeight:700, margin:0 }}>Dashboard</h1>
+        <p style={{ color:'#64748b', margin:'4px 0 0', fontSize:13 }}>Harleysville Facility — Live Overview</p>
+      </div>
+
+      {/* Clock + Weather — compact row */}
+      <div style={{ display:'grid', gridTemplateColumns:'200px 1fr', gap:12, marginBottom:20 }}>
+        {/* Clock */}
+        <div style={{ background:NAVY, borderRadius:10, padding:'14px 18px', color:'#fff', display:'flex', flexDirection:'column', justifyContent:'center' }}>
+          <div style={{ fontSize:11, color:'#94a3b8', marginBottom:2, textTransform:'uppercase', letterSpacing:1 }}>
+            {time.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})}
+          </div>
+          <div style={{ fontSize:28, fontWeight:800, letterSpacing:1, fontVariantNumeric:'tabular-nums', lineHeight:1.1 }}>
+            {time.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}
+          </div>
+          <div style={{ fontSize:11, color:'#94a3b8', marginTop:4 }}>Harleysville, PA</div>
         </div>
-        <button onClick={() => navigate('/assets/new')} style={{ background: NAV, color: '#fff', border: 'none', borderRadius: 8, padding: '10px 20px', cursor: 'pointer', fontWeight: 600, fontSize: 14 }}>
-          + Add Asset
+
+        {/* Weather compact */}
+        <div style={{ background:'#fff', borderRadius:10, padding:'12px 18px', boxShadow:'0 1px 4px rgba(0,0,0,0.08)' }}>
+          {!cur ? <div style={{ color:'#94a3b8', fontSize:13 }}>Loading weather...</div> : (
+            <div style={{ display:'flex', alignItems:'center', gap:0, height:'100%' }}>
+              <div style={{ display:'flex', alignItems:'center', gap:10, flex:'0 0 auto', paddingRight:18, borderRight:'1px solid #f1f5f9' }}>
+                <span style={{ fontSize:30 }}>{WX_ICONS[cur.weather_code]||'🌡️'}</span>
+                <div>
+                  <div style={{ fontSize:24, fontWeight:800, color:NAVY, lineHeight:1 }}>{Math.round(cur.temperature_2m)}°F</div>
+                  <div style={{ fontSize:11, color:'#64748b' }}>{WX_CODES[cur.weather_code]||'—'} · Feels {Math.round(cur.apparent_temperature)}°</div>
+                  <div style={{ fontSize:11, color:'#94a3b8' }}>💧{cur.relative_humidity_2m}% · 💨{Math.round(cur.wind_speed_10m)}mph {WindDir(cur.wind_direction_10m)}</div>
+                </div>
+              </div>
+              {daily && (
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:4, flex:1, paddingLeft:16 }}>
+                  {daily.time.map((date, i) => {
+                    const d = new Date(date+'T12:00:00');
+                    return (
+                      <div key={date} style={{ textAlign:'center' }}>
+                        <div style={{ fontSize:10, color:'#94a3b8', fontWeight:600 }}>{i===0?'Today':DAYS[d.getDay()]}</div>
+                        <div style={{ fontSize:16, margin:'2px 0' }}>{WX_ICONS[daily.weather_code[i]]||'🌡️'}</div>
+                        <div style={{ fontSize:11, fontWeight:700, color:NAVY }}>{Math.round(daily.temperature_2m_max[i])}°</div>
+                        <div style={{ fontSize:10, color:'#94a3b8' }}>{Math.round(daily.temperature_2m_min[i])}°</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* KPI Row */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:12, marginBottom:20 }}>
+        {[
+          { label:'Total Assets', value:total, color:BLUE, sub:null },
+          { label:'A-Tier Critical', value:critA, color:'#ef4444', sub:null },
+          { label:'Assets Offline', value:offlineAssets.length, color:offlineAssets.length>0?'#ef4444':'#22c55e', sub:offlineAssets.length>0?'Poor/Critical condition':null },
+          { label:'Fleet Uptime', value:`${uptimePct}%`, color:uptimePct>=95?'#22c55e':uptimePct>=80?'#f59e0b':'#ef4444', sub:null },
+          { label:'PM Overdue', value:overduePM, color:overduePM>0?'#f59e0b':'#22c55e', sub:null },
+        ].map(k => (
+          <div key={k.label} style={{ background:'#fff', borderRadius:10, padding:'16px 18px', boxShadow:'0 1px 4px rgba(0,0,0,0.08)', borderTop:`3px solid ${k.color}` }}>
+            <div style={{ fontSize:28, fontWeight:800, color:k.color, lineHeight:1 }}>{k.value}</div>
+            <div style={{ fontSize:12, color:'#64748b', marginTop:4 }}>{k.label}</div>
+            {k.sub && <div style={{ fontSize:11, color:'#94a3b8', marginTop:2 }}>{k.sub}</div>}
+          </div>
+        ))}
+      </div>
+
+      {/* Work Order KPIs + Request Link */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr) auto', gap:12, marginBottom:20, alignItems:'stretch' }}>
+        {[
+          { label:'Open Work Orders', value:openWOs.length, color:NAVY },
+          { label:'New (< 12 hrs)', value:newWOs.length, color:'#22c55e' },
+          { label:'Stale (> 5 days)', value:staleWOs.length, color:staleWOs.length>0?'#ef4444':'#94a3b8' },
+          { label:'Emergency', value:emergencyWOs.length, color:emergencyWOs.length>0?'#ef4444':'#94a3b8' },
+        ].map(k => (
+          <div key={k.label} onClick={() => navigate('/workorders')} style={{ background:'#fff', borderRadius:10, padding:'14px 16px', boxShadow:'0 1px 4px rgba(0,0,0,0.08)', borderTop:`3px solid ${k.color}`, cursor:'pointer' }}>
+            <div style={{ fontSize:26, fontWeight:800, color:k.color, lineHeight:1 }}>{k.value}</div>
+            <div style={{ fontSize:12, color:'#64748b', marginTop:4 }}>{k.label}</div>
+          </div>
+        ))}
+        {/* Request Link Button */}
+        <button onClick={copyRequestLink} style={{ background:copied?'#f0fdf4':NAVY, border:`2px solid ${copied?'#22c55e':NAVY}`, borderRadius:10, padding:'14px 20px', cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:4, transition:'all 0.2s', minWidth:130 }}>
+          <span style={{ fontSize:20 }}>{copied?'✅':'🔗'}</span>
+          <span style={{ fontSize:12, fontWeight:700, color:copied?'#16a34a':'#fff', whiteSpace:'nowrap' }}>{copied?'Copied!':'Copy Request Link'}</span>
+          <span style={{ fontSize:10, color:copied?'#86efac':'#94a3b8', whiteSpace:'nowrap' }}>Share with staff</span>
         </button>
       </div>
 
-      {/* Filters */}
-      <div style={{ background: '#fff', borderRadius: 12, padding: 16, marginBottom: 20, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-        <input
-          placeholder="Search name, ID, location..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          style={{ flex: 1, minWidth: 200, padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 14, outline: 'none' }}
-        />
-        <select value={filterCat} onChange={e => setFilterCat(e.target.value)} style={{ padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 14, background: '#fff' }}>
-          {CATEGORIES.map(c => <option key={c}>{c}</option>)}
-        </select>
-        <select value={filterCrit} onChange={e => setFilterCrit(e.target.value)} style={{ padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 14, background: '#fff' }}>
-          {['All', 'A', 'B', 'C'].map(c => <option key={c}>{c === 'All' ? 'All Criticality' : `Tier ${c}`}</option>)}
-        </select>
+      {/* Main content grid */}
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20, marginBottom:20 }}>
+
+        {/* New Work Orders < 12hrs */}
+        <div style={{ background:'#fff', borderRadius:10, padding:20, boxShadow:'0 1px 4px rgba(0,0,0,0.08)' }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
+            <h2 style={{ color:NAVY, fontSize:14, fontWeight:700, margin:0 }}>🆕 New Work Orders <span style={{ color:'#94a3b8', fontWeight:400 }}>(last 12 hrs)</span></h2>
+            <span style={{ background:'#f0fdf4', color:'#16a34a', fontSize:11, fontWeight:700, padding:'2px 8px', borderRadius:20 }}>{newWOs.length}</span>
+          </div>
+          {newWOs.length === 0 ? (
+            <div style={{ color:'#94a3b8', fontSize:13, padding:'12px 0' }}>No new work orders in the last 12 hours.</div>
+          ) : newWOs.map(w => (
+            <div key={w.id} onClick={() => navigate(`/workorders/${w.id}`)} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 0', borderBottom:'1px solid #f8fafc', cursor:'pointer' }}>
+              <div>
+                <div style={{ fontSize:13, fontWeight:600, color:'#1e293b' }}>{w.title}</div>
+                <div style={{ fontSize:11, color:'#94a3b8' }}>{w.location||'—'} · {w.requester_name||'Internal'}</div>
+              </div>
+              <span style={{ background:(PRIORITY_COLORS[w.priority]||'#94a3b8')+'20', color:PRIORITY_COLORS[w.priority]||'#94a3b8', fontSize:11, fontWeight:700, padding:'2px 8px', borderRadius:20, whiteSpace:'nowrap' }}>{w.priority}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Stale Work Orders > 5 days */}
+        <div style={{ background:'#fff', borderRadius:10, padding:20, boxShadow:'0 1px 4px rgba(0,0,0,0.08)' }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
+            <h2 style={{ color:NAVY, fontSize:14, fontWeight:700, margin:0 }}>⏳ Stale Work Orders <span style={{ color:'#94a3b8', fontWeight:400 }}>(5+ days)</span></h2>
+            <span style={{ background:staleWOs.length>0?'#fef2f2':'#f1f5f9', color:staleWOs.length>0?'#ef4444':'#94a3b8', fontSize:11, fontWeight:700, padding:'2px 8px', borderRadius:20 }}>{staleWOs.length}</span>
+          </div>
+          {staleWOs.length === 0 ? (
+            <div style={{ color:'#94a3b8', fontSize:13, padding:'12px 0' }}>No stale work orders — team is on top of it. ✅</div>
+          ) : staleWOs.map(w => {
+            const daysOld = Math.floor((now - new Date(w.created_at)) / (1000*60*60*24));
+            return (
+              <div key={w.id} onClick={() => navigate(`/workorders/${w.id}`)} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 0', borderBottom:'1px solid #f8fafc', cursor:'pointer' }}>
+                <div>
+                  <div style={{ fontSize:13, fontWeight:600, color:'#1e293b' }}>{w.title}</div>
+                  <div style={{ fontSize:11, color:'#94a3b8' }}>{w.assigned_to||'Unassigned'} · {w.status}</div>
+                </div>
+                <span style={{ background:'#fef2f2', color:'#ef4444', fontSize:11, fontWeight:700, padding:'2px 8px', borderRadius:20, whiteSpace:'nowrap' }}>{daysOld}d old</span>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
-      {/* Table */}
-      <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
-        {loading ? (
-          <div style={{ textAlign: 'center', padding: 48, color: '#64748b' }}>Loading...</div>
-        ) : assets.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: 48 }}>
-            <div style={{ fontSize: 40, marginBottom: 12 }}>🔍</div>
-            <div style={{ fontWeight: 600, color: NAV }}>No assets found</div>
-            <div style={{ color: '#64748b', fontSize: 13, marginTop: 4 }}>Try a different search or add a new asset</div>
+      {/* Assets Offline + Category breakdown */}
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20 }}>
+
+        {/* Offline / Down Assets */}
+        <div style={{ background:'#fff', borderRadius:10, padding:20, boxShadow:'0 1px 4px rgba(0,0,0,0.08)' }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
+            <h2 style={{ color:NAVY, fontSize:14, fontWeight:700, margin:0 }}>🔴 Assets Offline / Down</h2>
+            <span style={{ background:offlineAssets.length>0?'#fef2f2':'#f0fdf4', color:offlineAssets.length>0?'#ef4444':'#16a34a', fontSize:11, fontWeight:700, padding:'2px 8px', borderRadius:20 }}>{offlineAssets.length}</span>
           </div>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-              <thead>
-                <tr style={{ background: '#f8fafc' }}>
-                  {['Asset ID', 'Name', 'Category', 'Location', 'Tier', 'Condition', 'Next PM', 'Managed By', ''].map(h => (
-                    <th key={h} style={{ padding: '12px 14px', textAlign: 'left', color: '#64748b', fontWeight: 600, fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.5, whiteSpace: 'nowrap' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {assets.map((a, i) => (
-                  <tr key={a.id} style={{ borderTop: '1px solid #f1f5f9', background: i % 2 === 0 ? '#fff' : '#fafbfc' }}>
-                    <td style={{ padding: '12px 14px', color: '#64748b', fontFamily: 'monospace', fontSize: 12 }}>{a.asset_id || '—'}</td>
-                    <td style={{ padding: '12px 14px', fontWeight: 600, color: NAV }}>{a.name}</td>
-                    <td style={{ padding: '12px 14px', color: '#475569' }}>{a.category}</td>
-                    <td style={{ padding: '12px 14px', color: '#475569' }}>{a.location || '—'}</td>
-                    <td style={{ padding: '12px 14px' }}>
-                      <span style={{ background: CRIT_COLORS[a.criticality] + '20', color: CRIT_COLORS[a.criticality], padding: '3px 10px', borderRadius: 99, fontSize: 12, fontWeight: 700 }}>
-                        {a.criticality}
-                      </span>
-                    </td>
-                    <td style={{ padding: '12px 14px' }}>
-                      <span style={{
-                        padding: '3px 10px', borderRadius: 99, fontSize: 12, fontWeight: 600,
-                        background: { New: '#dbeafe', Good: '#dcfce7', Fair: '#fef9c3', Poor: '#fee2e2', Critical: '#fce7f3' }[a.condition] || '#f1f5f9',
-                        color: { New: '#1d4ed8', Good: '#16a34a', Fair: '#ca8a04', Poor: '#dc2626', Critical: '#be185d' }[a.condition] || '#64748b'
-                      }}>{a.condition}</span>
-                    </td>
-                    <td style={{ padding: '12px 14px', color: a.next_pm_date && new Date(a.next_pm_date) <= new Date(Date.now() + 30*86400000) ? '#ef4444' : '#475569', fontSize: 13 }}>
-                      {a.next_pm_date ? new Date(a.next_pm_date).toLocaleDateString() : '—'}
-                    </td>
-                    <td style={{ padding: '12px 14px' }}>
-                      <span style={{ padding: '3px 10px', borderRadius: 99, fontSize: 12, background: '#f1f5f9', color: '#475569' }}>
-                        {a.management_type}
-                      </span>
-                    </td>
-                    <td style={{ padding: '12px 14px' }}>
-                      <button onClick={() => navigate(`/assets/${a.id}`)} style={{ background: 'transparent', border: `1px solid ${BLUE}`, color: BLUE, borderRadius: 6, padding: '4px 12px', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>
-                        View
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+          {offlineAssets.length === 0 ? (
+            <div style={{ color:'#94a3b8', fontSize:13, padding:'12px 0' }}>All assets operational. Fleet uptime: <strong style={{ color:'#22c55e' }}>{uptimePct}%</strong></div>
+          ) : offlineAssets.map(a => (
+            <div key={a.id} onClick={() => navigate(`/assets/${a.id}`)} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 0', borderBottom:'1px solid #f8fafc', cursor:'pointer' }}>
+              <div>
+                <div style={{ fontSize:13, fontWeight:600, color:'#1e293b' }}>{a.name}</div>
+                <div style={{ fontSize:11, color:'#94a3b8' }}>{a.category} · {a.location||'—'}</div>
+              </div>
+              <span style={{ background:a.condition==='Critical'?'#fef2f2':'#fffbeb', color:a.condition==='Critical'?'#ef4444':'#f59e0b', fontSize:11, fontWeight:700, padding:'2px 8px', borderRadius:20 }}>{a.condition}</span>
+            </div>
+          ))}
+          {total > 0 && (
+            <div style={{ marginTop:14, paddingTop:12, borderTop:'1px solid #f1f5f9' }}>
+              <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, color:'#64748b', marginBottom:6 }}>
+                <span>Fleet Uptime</span><span style={{ fontWeight:700, color:uptimePct>=95?'#22c55e':uptimePct>=80?'#f59e0b':'#ef4444' }}>{uptimePct}%</span>
+              </div>
+              <div style={{ background:'#f1f5f9', borderRadius:20, height:8, overflow:'hidden' }}>
+                <div style={{ width:`${uptimePct}%`, height:'100%', background:uptimePct>=95?'#22c55e':uptimePct>=80?'#f59e0b':'#ef4444', borderRadius:20, transition:'width 0.5s' }} />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Assets by Category */}
+        <div style={{ background:'#fff', borderRadius:10, padding:20, boxShadow:'0 1px 4px rgba(0,0,0,0.08)' }}>
+          <h2 style={{ color:NAVY, fontSize:14, fontWeight:700, margin:'0 0 14px' }}>Assets by Category</h2>
+          {Object.keys(categories).length === 0 ? (
+            <div style={{ color:'#94a3b8', fontSize:13 }}>No assets yet. <span style={{ color:BLUE, cursor:'pointer' }} onClick={() => navigate('/assets/new')}>Add your first →</span></div>
+          ) : Object.entries(categories).sort((a,b) => b[1]-a[1]).map(([cat, count]) => (
+            <div key={cat} style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10 }}>
+              <div style={{ flex:1, fontSize:13, color:'#334155' }}>{cat}</div>
+              <div style={{ width:`${Math.round((count/total)*100)}px`, height:7, background:BLUE, borderRadius:4, minWidth:6 }} />
+              <div style={{ fontSize:13, fontWeight:600, color:NAVY, width:20, textAlign:'right' }}>{count}</div>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
