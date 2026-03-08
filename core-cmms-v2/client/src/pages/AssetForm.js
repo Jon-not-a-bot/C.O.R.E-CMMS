@@ -1,209 +1,258 @@
-import React, { useState, useEffect, useRef } from 'react';
-import axios from 'axios';
-import { useNavigate, useParams } from 'react-router-dom';
+import React, { useEffect, useState, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 
-const NAV = '#1B2D4F';
+const API = process.env.REACT_APP_API_URL || '';
+const NAVY = '#1B2D4F';
 const BLUE = '#3AACDC';
+const LAT = 40.2776;
+const LON = -75.3849;
 
-const CATEGORIES = ['PIT Fleet', 'Dock Equipment', 'HVAC & Heating', 'Electrical', 'Life Safety', 'Building Envelope', 'Utilities'];
-const LOCATIONS = ['Production Floor', 'Dock Area', 'Office', 'Roof', 'Exterior', 'Mechanical Room', 'Break Room', 'Parking Lot', 'Throughout'];
-const PM_FREQS = ['Weekly', 'Monthly', 'Quarterly', 'Semi-Annual', 'Annual', 'As Needed', 'Per OEM'];
+const WX_CODES = {0:'Clear',1:'Mostly Clear',2:'Partly Cloudy',3:'Overcast',45:'Fog',48:'Icy Fog',51:'Light Drizzle',53:'Drizzle',55:'Heavy Drizzle',61:'Light Rain',63:'Rain',65:'Heavy Rain',71:'Light Snow',73:'Snow',75:'Heavy Snow',77:'Snow Grains',80:'Light Showers',81:'Showers',82:'Heavy Showers',85:'Snow Showers',86:'Heavy Snow Showers',95:'Thunderstorm',96:'Thunderstorm w/ Hail',99:'Thunderstorm w/ Heavy Hail'};
+const WX_ICONS = {0:'☀️',1:'🌤️',2:'⛅',3:'☁️',45:'🌫️',48:'🌫️',51:'🌦️',53:'🌦️',55:'🌧️',61:'🌦️',63:'🌧️',65:'🌧️',71:'🌨️',73:'❄️',75:'❄️',77:'❄️',80:'🌦️',81:'🌧️',82:'⛈️',85:'🌨️',86:'🌨️',95:'⛈️',96:'⛈️',99:'⛈️'};
+const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const PRIORITY_COLORS = { Emergency:'#ef4444', High:'#f59e0b', Medium:'#3AACDC', Low:'#22c55e' };
 
-const Field = ({ label, required, children }) => (
-  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-    <label style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
-      {label}{required && <span style={{ color: '#ef4444' }}> *</span>}
-    </label>
-    {children}
-  </div>
-);
+function useClock() {
+  const [time, setTime] = useState(new Date());
+  useEffect(() => { const t = setInterval(() => setTime(new Date()), 1000); return () => clearInterval(t); }, []);
+  return time;
+}
 
-const inputStyle = { padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 14, outline: 'none', background: '#fff' };
+function useWeather() {
+  const [wx, setWx] = useState(null);
+  useEffect(() => {
+    fetch(`https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m&daily=weather_code,temperature_2m_max,temperature_2m_min&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America%2FNew_York&forecast_days=7`)
+      .then(r => r.json()).then(setWx).catch(() => {});
+  }, []);
+  return wx;
+}
 
-export default function AssetForm() {
-  const { id } = useParams();
+function WindDir(deg) { return ['N','NE','E','SE','S','SW','W','NW'][Math.round(deg/45)%8]; }
+
+export default function Dashboard() {
+  const [assets, setAssets] = useState([]);
+  const [wos, setWos] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [copied, setCopied] = useState(false);
   const navigate = useNavigate();
-  const isEdit = Boolean(id);
-  const scanInputRef = useRef();
-
-  const [form, setForm] = useState({
-    asset_id: '', name: '', category: 'PIT Fleet', subcategory: '', location: 'Production Floor',
-    criticality: 'B', manufacturer: '', model: '', serial_number: '', install_date: '',
-    condition: 'Good', pm_frequency: 'Monthly', last_pm_date: '', next_pm_date: '',
-    assigned_tech: '', management_type: 'In-House', vendor_name: '', warranty_expiry: '', notes: ''
-  });
-  const [photos, setPhotos] = useState([]);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-  const [scanning, setScanning] = useState(false);
-  const [scanResult, setScanResult] = useState(null);
+  const time = useClock();
+  const wx = useWeather();
 
   useEffect(() => {
-    if (isEdit) {
-      axios.get(`/api/assets/${id}`).then(res => {
-        const a = res.data;
-        setForm({
-          asset_id: a.asset_id || '', name: a.name || '', category: a.category || 'PIT Fleet',
-          subcategory: a.subcategory || '', location: a.location || '', criticality: a.criticality || 'B',
-          manufacturer: a.manufacturer || '', model: a.model || '', serial_number: a.serial_number || '',
-          install_date: a.install_date ? a.install_date.split('T')[0] : '', condition: a.condition || 'Good',
-          pm_frequency: a.pm_frequency || 'Monthly',
-          last_pm_date: a.last_pm_date ? a.last_pm_date.split('T')[0] : '',
-          next_pm_date: a.next_pm_date ? a.next_pm_date.split('T')[0] : '',
-          assigned_tech: a.assigned_tech || '', management_type: a.management_type || 'In-House',
-          vendor_name: a.vendor_name || '', warranty_expiry: a.warranty_expiry ? a.warranty_expiry.split('T')[0] : '',
-          notes: a.notes || ''
-        });
-      });
-    }
-  }, [id, isEdit]);
+    Promise.all([
+      fetch(`${API}/api/assets`).then(r => r.json()).catch(() => []),
+      fetch(`${API}/api/workorders`).then(r => r.json()).catch(() => [])
+    ]).then(([a, w]) => { setAssets(a); setWos(w); setLoading(false); });
+  }, []);
 
-  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
-
-  const handleScan = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    setScanning(true);
-    setScanResult(null);
-    try {
-      const formData = new FormData();
-      formData.append('image', file);
-      const API = process.env.REACT_APP_API_URL || '';
-      const res = await fetch(`${API}/api/scan-nameplate`, { method: 'POST', body: formData });
-      const data = await res.json();
-      if (!res.ok || !data.fields) throw new Error(data.error || 'Scan failed');
-      const f = data.fields;
-      setForm(prev => ({
-        ...prev,
-        manufacturer: f.manufacturer || prev.manufacturer,
-        model: f.model || prev.model,
-        serial_number: f.serial_number || prev.serial_number,
-        install_date: f.install_date || prev.install_date,
-        name: f.name || prev.name,
-        notes: f.notes ? (prev.notes ? prev.notes + '\n' + f.notes : f.notes) : prev.notes,
-      }));
-      setScanResult({ success: true, fields: f });
-    } catch (err) {
-      setScanResult({ success: false, error: err.message });
-    }
-    setScanning(false);
+  const copyRequestLink = () => {
+    const url = window.location.origin + '/request';
+    navigator.clipboard.writeText(url).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2500); });
   };
 
-  const submit = async () => {
-    if (!form.name.trim()) { setError('Asset name is required'); return; }
-    setSaving(true);
-    setError('');
-    try {
-      const data = new FormData();
-      Object.entries(form).forEach(([k, v]) => data.append(k, v));
-      photos.forEach(p => data.append('photos', p));
-      if (isEdit) {
-        await axios.put(`/api/assets/${id}`, data, { headers: { 'Content-Type': 'multipart/form-data' } });
-      } else {
-        await axios.post('/api/assets', data, { headers: { 'Content-Type': 'multipart/form-data' } });
-      }
-      navigate('/assets');
-    } catch (err) {
-      setError(err.response?.data?.error || 'Save failed');
-    }
-    setSaving(false);
-  };
-  const Section = ({ title, children }) => (
-    <div style={{ background: '#fff', borderRadius: 12, padding: 24, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', marginBottom: 20 }}>
-      <h3 style={{ fontSize: 15, fontWeight: 700, color: NAV, marginBottom: 20, paddingBottom: 12, borderBottom: '2px solid #f1f5f9' }}>{title}</h3>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16 }}>{children}</div>
-    </div>
-  );
-return (
+  const now = new Date();
+  const total = assets.length;
+  const critA = assets.filter(a => a.criticality === 'A').length;
+  const offlineAssets = assets.filter(a => a.condition === 'Critical' || a.condition === 'Poor');
+  const overduePM = assets.filter(a => a.next_pm_date && new Date(a.next_pm_date) < now).length;
+
+  const totalPossibleUptime = total * 100;
+  const downtimePoints = offlineAssets.reduce((acc, a) => acc + (a.condition === 'Critical' ? 100 : 40), 0);
+  const uptimePct = total > 0 ? Math.max(0, Math.round(((totalPossibleUptime - downtimePoints) / totalPossibleUptime) * 100)) : 100;
+
+  const openWOs = wos.filter(w => w.status !== 'Closed');
+  const newWOs = wos.filter(w => (now - new Date(w.created_at)) < 12 * 60 * 60 * 1000 && w.status !== 'Closed');
+  const staleWOs = wos.filter(w => (now - new Date(w.created_at)) > 5 * 24 * 60 * 60 * 1000 && w.status !== 'Closed');
+  const emergencyWOs = openWOs.filter(w => w.priority === 'Emergency');
+
+  const categories = {};
+  assets.forEach(a => { categories[a.category] = (categories[a.category] || 0) + 1; });
+
+  const cur = wx?.current;
+  const daily = wx?.daily;
+
+  if (loading) return <div style={{ padding:40, color:'#64748b', textAlign:'center' }}>Loading C.O.R.E. data...</div>;
+
+  return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-        <div>
-          <h1 style={{ fontSize: 22, fontWeight: 800, color: NAV }}>{isEdit ? 'Edit Asset' : 'Add New Asset'}</h1>
-          <p style={{ color: '#64748b', fontSize: 13, marginTop: 2 }}>Fill in asset details for the C.O.R.E. registry</p>
-        </div>
-        <button onClick={() => navigate(-1)} style={{ background: 'transparent', border: '1px solid #e2e8f0', color: '#64748b', borderRadius: 8, padding: '8px 16px', cursor: 'pointer' }}>Cancel</button>
+      <div style={{ marginBottom:20 }}>
+        <h1 style={{ color:NAVY, fontSize:22, fontWeight:700, margin:0 }}>Dashboard</h1>
+        <p style={{ color:'#64748b', margin:'4px 0 0', fontSize:13 }}>Harleysville Facility — Live Overview</p>
       </div>
 
-      <div style={{ background: NAV, borderRadius: 12, padding: 24, marginBottom: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
-        <div>
-          <div style={{ color: '#fff', fontWeight: 700, fontSize: 16 }}>Scan ID Plate</div>
-          <div style={{ color: '#94a3b8', fontSize: 13, marginTop: 4 }}>Take a photo of the equipment nameplate to auto-fill fields.</div>
+      {/* Clock + Weather — compact row */}
+      <div style={{ display:'grid', gridTemplateColumns:'200px 1fr', gap:12, marginBottom:20 }}>
+        {/* Clock */}
+        <div style={{ background:NAVY, borderRadius:10, padding:'14px 18px', color:'#fff', display:'flex', flexDirection:'column', justifyContent:'center' }}>
+          <div style={{ fontSize:11, color:'#94a3b8', marginBottom:2, textTransform:'uppercase', letterSpacing:1 }}>
+            {time.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})}
+          </div>
+          <div style={{ fontSize:28, fontWeight:800, letterSpacing:1, fontVariantNumeric:'tabular-nums', lineHeight:1.1 }}>
+            {time.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}
+          </div>
+          <div style={{ fontSize:11, color:'#94a3b8', marginTop:4 }}>Harleysville, PA</div>
         </div>
-        <div>
-          <input ref={scanInputRef} type="file" accept="image/*" capture="environment" onChange={handleScan} style={{ display: 'none' }} />
-          <button onClick={() => scanInputRef.current.click()} disabled={scanning} style={{ background: scanning ? '#64748b' : BLUE, color: '#fff', border: 'none', borderRadius: 8, padding: '12px 24px', fontSize: 14, fontWeight: 700, cursor: scanning ? 'not-allowed' : 'pointer' }}>
-            {scanning ? 'Scanning...' : 'Scan Plate'}
-          </button>
+
+        {/* Weather compact */}
+        <div style={{ background:'#fff', borderRadius:10, padding:'12px 18px', boxShadow:'0 1px 4px rgba(0,0,0,0.08)' }}>
+          {!cur ? <div style={{ color:'#94a3b8', fontSize:13 }}>Loading weather...</div> : (
+            <div style={{ display:'flex', alignItems:'center', gap:0, height:'100%' }}>
+              <div style={{ display:'flex', alignItems:'center', gap:10, flex:'0 0 auto', paddingRight:18, borderRight:'1px solid #f1f5f9' }}>
+                <span style={{ fontSize:30 }}>{WX_ICONS[cur.weather_code]||'🌡️'}</span>
+                <div>
+                  <div style={{ fontSize:24, fontWeight:800, color:NAVY, lineHeight:1 }}>{Math.round(cur.temperature_2m)}°F</div>
+                  <div style={{ fontSize:11, color:'#64748b' }}>{WX_CODES[cur.weather_code]||'—'} · Feels {Math.round(cur.apparent_temperature)}°</div>
+                  <div style={{ fontSize:11, color:'#94a3b8' }}>💧{cur.relative_humidity_2m}% · 💨{Math.round(cur.wind_speed_10m)}mph {WindDir(cur.wind_direction_10m)}</div>
+                </div>
+              </div>
+              {daily && (
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:4, flex:1, paddingLeft:16 }}>
+                  {daily.time.map((date, i) => {
+                    const d = new Date(date+'T12:00:00');
+                    return (
+                      <div key={date} style={{ textAlign:'center' }}>
+                        <div style={{ fontSize:10, color:'#94a3b8', fontWeight:600 }}>{i===0?'Today':DAYS[d.getDay()]}</div>
+                        <div style={{ fontSize:16, margin:'2px 0' }}>{WX_ICONS[daily.weather_code[i]]||'🌡️'}</div>
+                        <div style={{ fontSize:11, fontWeight:700, color:NAVY }}>{Math.round(daily.temperature_2m_max[i])}°</div>
+                        <div style={{ fontSize:10, color:'#94a3b8' }}>{Math.round(daily.temperature_2m_min[i])}°</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
-      {scanResult && (
-        <div style={{ background: scanResult.success ? '#f0fdf4' : '#fef2f2', border: `1px solid ${scanResult.success ? '#bbf7d0' : '#fecaca'}`, borderRadius: 10, padding: '14px 18px', marginBottom: 20 }}>
-          {scanResult.success
-            ? <div style={{ color: '#16a34a', fontWeight: 700, fontSize: 14 }}>Nameplate scanned - fields auto-filled. Review before saving.</div>
-            : <div style={{ color: '#dc2626', fontSize: 14 }}>Scan failed: {scanResult.error}</div>
-          }
-        </div>
-      )}
+      {/* KPI Row */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:12, marginBottom:20 }}>
+        {[
+          { label:'Total Assets', value:total, color:BLUE, sub:null },
+          { label:'A-Tier Critical', value:critA, color:'#ef4444', sub:null },
+          { label:'Assets Offline', value:offlineAssets.length, color:offlineAssets.length>0?'#ef4444':'#22c55e', sub:offlineAssets.length>0?'Poor/Critical condition':null },
+          { label:'Fleet Uptime', value:`${uptimePct}%`, color:uptimePct>=95?'#22c55e':uptimePct>=80?'#f59e0b':'#ef4444', sub:null },
+          { label:'PM Overdue', value:overduePM, color:overduePM>0?'#f59e0b':'#22c55e', sub:null },
+        ].map(k => (
+          <div key={k.label} style={{ background:'#fff', borderRadius:10, padding:'16px 18px', boxShadow:'0 1px 4px rgba(0,0,0,0.08)', borderTop:`3px solid ${k.color}` }}>
+            <div style={{ fontSize:28, fontWeight:800, color:k.color, lineHeight:1 }}>{k.value}</div>
+            <div style={{ fontSize:12, color:'#64748b', marginTop:4 }}>{k.label}</div>
+            {k.sub && <div style={{ fontSize:11, color:'#94a3b8', marginTop:2 }}>{k.sub}</div>}
+          </div>
+        ))}
+      </div>
 
-      <div style={{ background: '#fff', borderRadius: 12, padding: 24, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', marginBottom: 20 }}>
-        <h3 style={{ fontSize: 15, fontWeight: 700, color: NAV, marginBottom: 16 }}>Asset Criticality Tier</h3>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12 }}>
-          {[{val:'A',label:'A - Critical',desc:'Life safety, production stoppage',color:'#ef4444'},{val:'B',label:'B - Important',desc:'Significant impact if down',color:'#f59e0b'},{val:'C',label:'C - Standard',desc:'Minimal impact',color:'#22c55e'}].map(t => (
-            <div key={t.val} onClick={() => set('criticality', t.val)} style={{ border: `2px solid ${form.criticality === t.val ? t.color : '#e2e8f0'}`, borderRadius: 10, padding: 16, cursor: 'pointer', background: form.criticality === t.val ? t.color + '10' : '#fff' }}>
-              <div style={{ fontWeight: 700, color: t.color, fontSize: 15 }}>{t.label}</div>
-              <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>{t.desc}</div>
+      {/* Work Order KPIs + Request Link */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr) auto', gap:12, marginBottom:20, alignItems:'stretch' }}>
+        {[
+          { label:'Open Work Orders', value:openWOs.length, color:NAVY },
+          { label:'New (< 12 hrs)', value:newWOs.length, color:'#22c55e' },
+          { label:'Stale (> 5 days)', value:staleWOs.length, color:staleWOs.length>0?'#ef4444':'#94a3b8' },
+          { label:'Emergency', value:emergencyWOs.length, color:emergencyWOs.length>0?'#ef4444':'#94a3b8' },
+        ].map(k => (
+          <div key={k.label} onClick={() => navigate('/workorders')} style={{ background:'#fff', borderRadius:10, padding:'14px 16px', boxShadow:'0 1px 4px rgba(0,0,0,0.08)', borderTop:`3px solid ${k.color}`, cursor:'pointer' }}>
+            <div style={{ fontSize:26, fontWeight:800, color:k.color, lineHeight:1 }}>{k.value}</div>
+            <div style={{ fontSize:12, color:'#64748b', marginTop:4 }}>{k.label}</div>
+          </div>
+        ))}
+        {/* Request Link Button */}
+        <button onClick={copyRequestLink} style={{ background:copied?'#f0fdf4':NAVY, border:`2px solid ${copied?'#22c55e':NAVY}`, borderRadius:10, padding:'14px 20px', cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:4, transition:'all 0.2s', minWidth:130 }}>
+          <span style={{ fontSize:20 }}>{copied?'✅':'🔗'}</span>
+          <span style={{ fontSize:12, fontWeight:700, color:copied?'#16a34a':'#fff', whiteSpace:'nowrap' }}>{copied?'Copied!':'Copy Request Link'}</span>
+          <span style={{ fontSize:10, color:copied?'#86efac':'#94a3b8', whiteSpace:'nowrap' }}>Share with staff</span>
+        </button>
+      </div>
+
+      {/* Main content grid */}
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20, marginBottom:20 }}>
+
+        {/* New Work Orders < 12hrs */}
+        <div style={{ background:'#fff', borderRadius:10, padding:20, boxShadow:'0 1px 4px rgba(0,0,0,0.08)' }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
+            <h2 style={{ color:NAVY, fontSize:14, fontWeight:700, margin:0 }}>🆕 New Work Orders <span style={{ color:'#94a3b8', fontWeight:400 }}>(last 12 hrs)</span></h2>
+            <span style={{ background:'#f0fdf4', color:'#16a34a', fontSize:11, fontWeight:700, padding:'2px 8px', borderRadius:20 }}>{newWOs.length}</span>
+          </div>
+          {newWOs.length === 0 ? (
+            <div style={{ color:'#94a3b8', fontSize:13, padding:'12px 0' }}>No new work orders in the last 12 hours.</div>
+          ) : newWOs.map(w => (
+            <div key={w.id} onClick={() => navigate(`/workorders/${w.id}`)} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 0', borderBottom:'1px solid #f8fafc', cursor:'pointer' }}>
+              <div>
+                <div style={{ fontSize:13, fontWeight:600, color:'#1e293b' }}>{w.title}</div>
+                <div style={{ fontSize:11, color:'#94a3b8' }}>{w.location||'—'} · {w.requester_name||'Internal'}</div>
+              </div>
+              <span style={{ background:(PRIORITY_COLORS[w.priority]||'#94a3b8')+'20', color:PRIORITY_COLORS[w.priority]||'#94a3b8', fontSize:11, fontWeight:700, padding:'2px 8px', borderRadius:20, whiteSpace:'nowrap' }}>{w.priority}</span>
             </div>
           ))}
         </div>
+
+        {/* Stale Work Orders > 5 days */}
+        <div style={{ background:'#fff', borderRadius:10, padding:20, boxShadow:'0 1px 4px rgba(0,0,0,0.08)' }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
+            <h2 style={{ color:NAVY, fontSize:14, fontWeight:700, margin:0 }}>⏳ Stale Work Orders <span style={{ color:'#94a3b8', fontWeight:400 }}>(5+ days)</span></h2>
+            <span style={{ background:staleWOs.length>0?'#fef2f2':'#f1f5f9', color:staleWOs.length>0?'#ef4444':'#94a3b8', fontSize:11, fontWeight:700, padding:'2px 8px', borderRadius:20 }}>{staleWOs.length}</span>
+          </div>
+          {staleWOs.length === 0 ? (
+            <div style={{ color:'#94a3b8', fontSize:13, padding:'12px 0' }}>No stale work orders — team is on top of it. ✅</div>
+          ) : staleWOs.map(w => {
+            const daysOld = Math.floor((now - new Date(w.created_at)) / (1000*60*60*24));
+            return (
+              <div key={w.id} onClick={() => navigate(`/workorders/${w.id}`)} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 0', borderBottom:'1px solid #f8fafc', cursor:'pointer' }}>
+                <div>
+                  <div style={{ fontSize:13, fontWeight:600, color:'#1e293b' }}>{w.title}</div>
+                  <div style={{ fontSize:11, color:'#94a3b8' }}>{w.assigned_to||'Unassigned'} · {w.status}</div>
+                </div>
+                <span style={{ background:'#fef2f2', color:'#ef4444', fontSize:11, fontWeight:700, padding:'2px 8px', borderRadius:20, whiteSpace:'nowrap' }}>{daysOld}d old</span>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
-      <Section title="Asset Identification">
-        <Field label="Asset ID"><input style={inputStyle} value={form.asset_id} onChange={e => set('asset_id', e.target.value)} placeholder="e.g. FLT-001" /></Field>
-        <Field label="Asset Name" required><input style={inputStyle} value={form.name} onChange={e => set('name', e.target.value)} placeholder="e.g. Sit-Down Forklift #1" /></Field>
-        <Field label="Category"><select style={inputStyle} value={form.category} onChange={e => set('category', e.target.value)}>{CATEGORIES.map(c => <option key={c}>{c}</option>)}</select></Field>
-        <Field label="Subcategory"><input style={inputStyle} value={form.subcategory} onChange={e => set('subcategory', e.target.value)} /></Field>
-        <Field label="Location"><select style={inputStyle} value={form.location} onChange={e => set('location', e.target.value)}>{LOCATIONS.map(l => <option key={l}>{l}</option>)}</select></Field>
-      </Section>
+      {/* Assets Offline + Category breakdown */}
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20 }}>
 
-      <Section title="Equipment Details">
-        <Field label="Manufacturer"><input style={inputStyle} value={form.manufacturer} onChange={e => set('manufacturer', e.target.value)} /></Field>
-        <Field label="Model"><input style={inputStyle} value={form.model} onChange={e => set('model', e.target.value)} /></Field>
-        <Field label="Serial Number"><input style={inputStyle} value={form.serial_number} onChange={e => set('serial_number', e.target.value)} /></Field>
-        <Field label="Install Date"><input type="date" style={inputStyle} value={form.install_date} onChange={e => set('install_date', e.target.value)} /></Field>
-        <Field label="Warranty Expiry"><input type="date" style={inputStyle} value={form.warranty_expiry} onChange={e => set('warranty_expiry', e.target.value)} /></Field>
-        <Field label="Condition"><select style={inputStyle} value={form.condition} onChange={e => set('condition', e.target.value)}>{['New','Good','Fair','Poor','Critical'].map(c => <option key={c}>{c}</option>)}</select></Field>
-      </Section>
+        {/* Offline / Down Assets */}
+        <div style={{ background:'#fff', borderRadius:10, padding:20, boxShadow:'0 1px 4px rgba(0,0,0,0.08)' }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
+            <h2 style={{ color:NAVY, fontSize:14, fontWeight:700, margin:0 }}>🔴 Assets Offline / Down</h2>
+            <span style={{ background:offlineAssets.length>0?'#fef2f2':'#f0fdf4', color:offlineAssets.length>0?'#ef4444':'#16a34a', fontSize:11, fontWeight:700, padding:'2px 8px', borderRadius:20 }}>{offlineAssets.length}</span>
+          </div>
+          {offlineAssets.length === 0 ? (
+            <div style={{ color:'#94a3b8', fontSize:13, padding:'12px 0' }}>All assets operational. Fleet uptime: <strong style={{ color:'#22c55e' }}>{uptimePct}%</strong></div>
+          ) : offlineAssets.map(a => (
+            <div key={a.id} onClick={() => navigate(`/assets/${a.id}`)} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 0', borderBottom:'1px solid #f8fafc', cursor:'pointer' }}>
+              <div>
+                <div style={{ fontSize:13, fontWeight:600, color:'#1e293b' }}>{a.name}</div>
+                <div style={{ fontSize:11, color:'#94a3b8' }}>{a.category} · {a.location||'—'}</div>
+              </div>
+              <span style={{ background:a.condition==='Critical'?'#fef2f2':'#fffbeb', color:a.condition==='Critical'?'#ef4444':'#f59e0b', fontSize:11, fontWeight:700, padding:'2px 8px', borderRadius:20 }}>{a.condition}</span>
+            </div>
+          ))}
+          {total > 0 && (
+            <div style={{ marginTop:14, paddingTop:12, borderTop:'1px solid #f1f5f9' }}>
+              <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, color:'#64748b', marginBottom:6 }}>
+                <span>Fleet Uptime</span><span style={{ fontWeight:700, color:uptimePct>=95?'#22c55e':uptimePct>=80?'#f59e0b':'#ef4444' }}>{uptimePct}%</span>
+              </div>
+              <div style={{ background:'#f1f5f9', borderRadius:20, height:8, overflow:'hidden' }}>
+                <div style={{ width:`${uptimePct}%`, height:'100%', background:uptimePct>=95?'#22c55e':uptimePct>=80?'#f59e0b':'#ef4444', borderRadius:20, transition:'width 0.5s' }} />
+              </div>
+            </div>
+          )}
+        </div>
 
-      <Section title="PM Schedule">
-        <Field label="PM Frequency"><select style={inputStyle} value={form.pm_frequency} onChange={e => set('pm_frequency', e.target.value)}>{PM_FREQS.map(f => <option key={f}>{f}</option>)}</select></Field>
-        <Field label="Last PM Date"><input type="date" style={inputStyle} value={form.last_pm_date} onChange={e => set('last_pm_date', e.target.value)} /></Field>
-        <Field label="Next PM Due"><input type="date" style={inputStyle} value={form.next_pm_date} onChange={e => set('next_pm_date', e.target.value)} /></Field>
-        <Field label="Assigned Tech"><input style={inputStyle} value={form.assigned_tech} onChange={e => set('assigned_tech', e.target.value)} /></Field>
-      </Section>
-
-      <Section title="Management">
-        <Field label="Management Type"><select style={inputStyle} value={form.management_type} onChange={e => set('management_type', e.target.value)}>{['In-House','Vendor','Landlord','Utility'].map(m => <option key={m}>{m}</option>)}</select></Field>
-        <Field label="Vendor / Contractor"><input style={inputStyle} value={form.vendor_name} onChange={e => set('vendor_name', e.target.value)} /></Field>
-      </Section>
-
-      <div style={{ background: '#fff', borderRadius: 12, padding: 24, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', marginBottom: 20 }}>
-        <h3 style={{ fontSize: 15, fontWeight: 700, color: NAV, marginBottom: 16 }}>Photos</h3>
-        <input type="file" accept="image/*" multiple capture="environment" onChange={e => setPhotos([...e.target.files])} style={{ fontSize: 14, color: '#64748b' }} />
-      </div>
-
-      <div style={{ background: '#fff', borderRadius: 12, padding: 24, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', marginBottom: 24 }}>
-        <h3 style={{ fontSize: 15, fontWeight: 700, color: NAV, marginBottom: 16 }}>Notes</h3>
-        <textarea value={form.notes} onChange={e => set('notes', e.target.value)} placeholder="OEM specs, compliance notes, known issues..." style={{ ...inputStyle, width: '100%', minHeight: 100, resize: 'vertical' }} />
-      </div>
-
-      {error && <div style={{ background: '#fee2e2', color: '#dc2626', padding: '12px 16px', borderRadius: 8, marginBottom: 16, fontSize: 14 }}>{error}</div>}
-
-      <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
-        <button onClick={() => navigate(-1)} style={{ background: '#f1f5f9', border: 'none', color: '#475569', borderRadius: 8, padding: '12px 24px', cursor: 'pointer', fontWeight: 600 }}>Cancel</button>
-        <button onClick={submit} disabled={saving} style={{ background: NAV, color: '#fff', border: 'none', borderRadius: 8, padding: '12px 28px', cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: 15, opacity: saving ? 0.7 : 1 }}>
-          {saving ? 'Saving...' : isEdit ? 'Update Asset' : 'Save Asset'}
-        </button>
+        {/* Assets by Category */}
+        <div style={{ background:'#fff', borderRadius:10, padding:20, boxShadow:'0 1px 4px rgba(0,0,0,0.08)' }}>
+          <h2 style={{ color:NAVY, fontSize:14, fontWeight:700, margin:'0 0 14px' }}>Assets by Category</h2>
+          {Object.keys(categories).length === 0 ? (
+            <div style={{ color:'#94a3b8', fontSize:13 }}>No assets yet. <span style={{ color:BLUE, cursor:'pointer' }} onClick={() => navigate('/assets/new')}>Add your first →</span></div>
+          ) : Object.entries(categories).sort((a,b) => b[1]-a[1]).map(([cat, count]) => (
+            <div key={cat} style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10 }}>
+              <div style={{ flex:1, fontSize:13, color:'#334155' }}>{cat}</div>
+              <div style={{ width:`${Math.round((count/total)*100)}px`, height:7, background:BLUE, borderRadius:4, minWidth:6 }} />
+              <div style={{ fontSize:13, fontWeight:600, color:NAVY, width:20, textAlign:'right' }}>{count}</div>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
