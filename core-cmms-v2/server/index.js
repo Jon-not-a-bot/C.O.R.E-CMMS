@@ -46,6 +46,7 @@ const authRouter = require('./routes/auth');
 const assetsRouter = require('./routes/assets');
 const scanRouter = require('./routes/scan');
 const workOrdersRouter = require('./routes/workorders');
+const vendorsRouter = require('./routes/vendors');
 
 app.use('/api/auth', authRouter);
 
@@ -58,6 +59,7 @@ app.use('/api/workorders/request', (req, res, next) => {
 // Protected routes
 app.use('/api/assets', requireAuth, assetsRouter);
 app.use('/api/scan-nameplate', requireAuth, scanRouter);
+app.use('/api/vendors', requireAuth, vendorsRouter);
 app.use('/api/workorders', (req, res, next) => {
   // Allow POST to create work request without auth (source=Request)
   if (req.method === 'POST' && req.path === '/') {
