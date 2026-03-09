@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 
@@ -9,7 +9,6 @@ const BLUE = '#3AACDC';
 const CATEGORIES = ['PIT Fleet', 'Dock Equipment', 'HVAC & Heating', 'Electrical', 'Life Safety', 'Building Envelope', 'Utilities', 'General'];
 const LOCATIONS = ['Production Floor', 'Dock Area', 'Office', 'Roof', 'Exterior', 'Mechanical Room', 'Break Room', 'Parking Lot', 'Throughout'];
 const CONDITIONS = ['Excellent', 'Good', 'Fair', 'Poor', 'Critical'];
-const CRITICALITIES = ['A', 'B', 'C'];
 const PM_FREQUENCIES = ['Weekly', 'Monthly', 'Quarterly', 'Semi-Annual', 'Annual', 'As Needed'];
 
 const inputStyle = { padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 14, outline: 'none', background: '#fff', width: '100%', boxSizing: 'border-box' };
@@ -34,8 +33,9 @@ const Section = ({ title, children }) => (
 export default function AssetForm() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { authFetch } = useAuth();
+  const { authFetch, token } = useAuth();
   const isEdit = Boolean(id);
+  const scanInputRef = useRef();
 
   const [form, setForm] = useState({
     name: '', asset_id: '', category: 'General', location: 'Production Floor',
@@ -47,6 +47,8 @@ export default function AssetForm() {
   const [photos, setPhotos] = useState([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [scanning, setScanning] = useState(false);
+  const [scanResult, setScanResult] = useState(null);
 
   useEffect(() => {
     if (isEdit) {
@@ -54,16 +56,10 @@ export default function AssetForm() {
         .then(r => r.json())
         .then(a => {
           setForm({
-            name: a.name || '',
-            asset_id: a.asset_id || '',
-            category: a.category || 'General',
-            location: a.location || 'Production Floor',
-            condition: a.condition || 'Good',
-            criticality: a.criticality || 'B',
-            manufacturer: a.manufacturer || '',
-            model: a.model || '',
-            serial_number: a.serial_number || '',
-            year: a.year || '',
+            name: a.name || '', asset_id: a.asset_id || '', category: a.category || 'General',
+            location: a.location || 'Production Floor', condition: a.condition || 'Good',
+            criticality: a.criticality || 'B', manufacturer: a.manufacturer || '',
+            model: a.model || '', serial_number: a.serial_number || '', year: a.year || '',
             purchase_date: a.purchase_date ? a.purchase_date.split('T')[0] : '',
             purchase_cost: a.purchase_cost || '',
             warranty_expiry: a.warranty_expiry ? a.warranty_expiry.split('T')[0] : '',
@@ -79,31 +75,53 @@ export default function AssetForm() {
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
+  const handleScan = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setScanning(true);
+    setScanResult(null);
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+      const res = await fetch(`${API}/api/scan-nameplate`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData
+      });
+      const data = await res.json();
+      if (!res.ok || !data.fields) throw new Error(data.error || 'Scan failed');
+      const f = data.fields;
+      setForm(prev => ({
+        ...prev,
+        manufacturer: f.manufacturer || prev.manufacturer,
+        model: f.model || prev.model,
+        serial_number: f.serial_number || prev.serial_number,
+        name: f.name || prev.name,
+        notes: f.notes ? (prev.notes ? prev.notes + '\n' + f.notes : f.notes) : prev.notes,
+      }));
+      setScanResult({ success: true, fields: f });
+    } catch (err) {
+      setScanResult({ success: false, error: err.message });
+    }
+    setScanning(false);
+  };
+
   const submit = async () => {
     if (!form.name.trim()) { setError('Asset name is required'); return; }
     setSaving(true); setError('');
     try {
       const url = isEdit ? `${API}/api/assets/${id}` : `${API}/api/assets`;
       const method = isEdit ? 'PUT' : 'POST';
-
       let res;
       if (isEdit) {
-        res = await authFetch(url, {
-          method,
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(form)
-        });
+        res = await authFetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) });
       } else {
         const data = new FormData();
         Object.entries(form).forEach(([k, v]) => { if (v !== '') data.append(k, v); });
         photos.forEach(p => data.append('photos', p));
         res = await authFetch(url, { method, body: data });
       }
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || 'Save failed');
-      }
+      if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || 'Save failed'); }
       const saved = await res.json();
       navigate(`/assets/${saved.id || id}`);
     } catch (err) { setError(err.message); }
@@ -119,6 +137,29 @@ export default function AssetForm() {
         </div>
         <button onClick={() => navigate(-1)} style={{ background: 'transparent', border: '1px solid #e2e8f0', color: '#64748b', borderRadius: 8, padding: '8px 16px', cursor: 'pointer' }}>Cancel</button>
       </div>
+
+      {/* Scan Banner */}
+      <div style={{ background: NAVY, borderRadius: 12, padding: 24, marginBottom: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+        <div>
+          <div style={{ color: '#fff', fontWeight: 700, fontSize: 16 }}>Scan ID Plate</div>
+          <div style={{ color: '#94a3b8', fontSize: 13, marginTop: 4 }}>Take a photo of the equipment nameplate to auto-fill manufacturer, model, and serial number.</div>
+        </div>
+        <div>
+          <input ref={scanInputRef} type="file" accept="image/*" capture="environment" onChange={handleScan} style={{ display: 'none' }} />
+          <button onClick={() => scanInputRef.current.click()} disabled={scanning}
+            style={{ background: scanning ? '#64748b' : BLUE, color: '#fff', border: 'none', borderRadius: 8, padding: '12px 24px', fontSize: 14, fontWeight: 700, cursor: scanning ? 'not-allowed' : 'pointer', minWidth: 140 }}>
+            {scanning ? 'Scanning...' : 'Scan Plate'}
+          </button>
+        </div>
+      </div>
+
+      {scanResult && (
+        <div style={{ background: scanResult.success ? '#f0fdf4' : '#fef2f2', border: `1px solid ${scanResult.success ? '#bbf7d0' : '#fecaca'}`, borderRadius: 10, padding: '14px 18px', marginBottom: 20 }}>
+          {scanResult.success
+            ? <div style={{ color: '#16a34a', fontWeight: 700, fontSize: 14 }}>Nameplate scanned — fields auto-filled. Review before saving.</div>
+            : <div style={{ color: '#dc2626', fontSize: 14 }}>Scan failed: {scanResult.error}. Try a clearer photo with good lighting.</div>}
+        </div>
+      )}
 
       {/* Criticality selector */}
       <div style={{ background: '#fff', borderRadius: 12, padding: 24, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', marginBottom: 20 }}>
@@ -164,13 +205,13 @@ export default function AssetForm() {
 
       <Section title="Equipment Details">
         <Field label="Manufacturer">
-          <input style={inputStyle} value={form.manufacturer} onChange={e => set('manufacturer', e.target.value)} placeholder="e.g. Crown, Assa Abloy, Carrier" />
+          <input style={inputStyle} value={form.manufacturer} onChange={e => set('manufacturer', e.target.value)} placeholder="e.g. Crown, Carrier" />
         </Field>
         <Field label="Model">
           <input style={inputStyle} value={form.model} onChange={e => set('model', e.target.value)} placeholder="e.g. RC 5500-40" />
         </Field>
         <Field label="Serial Number">
-          <input style={inputStyle} value={form.serial_number} onChange={e => set('serial_number', e.target.value)} placeholder="Manufacturer serial" />
+          <input style={inputStyle} value={form.serial_number} onChange={e => set('serial_number', e.target.value)} />
         </Field>
         <Field label="Year">
           <input style={inputStyle} value={form.year} onChange={e => set('year', e.target.value)} placeholder="e.g. 2019" type="number" min="1950" max="2030" />
@@ -200,7 +241,6 @@ export default function AssetForm() {
         </Field>
       </Section>
 
-      {/* Notes */}
       <div style={{ background: '#fff', borderRadius: 12, padding: 24, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', marginBottom: 20 }}>
         <h3 style={{ fontSize: 15, fontWeight: 700, color: NAVY, marginBottom: 16 }}>Notes</h3>
         <textarea value={form.notes} onChange={e => set('notes', e.target.value)}
@@ -208,13 +248,11 @@ export default function AssetForm() {
           style={{ ...inputStyle, minHeight: 100, resize: 'vertical' }} />
       </div>
 
-      {/* Photos (new assets only) */}
       {!isEdit && (
         <div style={{ background: '#fff', borderRadius: 12, padding: 24, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', marginBottom: 20 }}>
           <h3 style={{ fontSize: 15, fontWeight: 700, color: NAVY, marginBottom: 16 }}>Photos</h3>
           <input type="file" accept="image/*" multiple capture="environment"
-            onChange={e => setPhotos([...e.target.files])}
-            style={{ fontSize: 14, color: '#64748b' }} />
+            onChange={e => setPhotos([...e.target.files])} style={{ fontSize: 14, color: '#64748b' }} />
           {photos.length > 0 && <div style={{ marginTop: 8, fontSize: 13, color: '#64748b' }}>{photos.length} photo{photos.length > 1 ? 's' : ''} selected</div>}
         </div>
       )}
