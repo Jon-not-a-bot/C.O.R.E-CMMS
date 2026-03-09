@@ -8,6 +8,9 @@ import WorkOrders from './pages/WorkOrders';
 import WorkOrderForm from './pages/WorkOrderForm';
 import WorkOrderDetail from './pages/WorkOrderDetail';
 import WorkRequest from './pages/WorkRequest';
+import VendorList from './pages/VendorList';
+import VendorForm from './pages/VendorForm';
+import VendorDetail from './pages/VendorDetail';
 
 const NAVY = '#1B2D4F';
 const BLUE = '#3AACDC';
@@ -23,6 +26,7 @@ function Layout({ children }) {
           { to:'/', label:'Dashboard' },
           { to:'/assets', label:'Assets' },
           { to:'/workorders', label:'Work Orders' },
+          { to:'/vendors', label:'Vendors' },
         ].map(({ to, label }) => (
           <NavLink key={to} to={to} end={to==='/'} style={({ isActive }) => ({
             color: isActive ? BLUE : '#94a3b8', textDecoration:'none', fontWeight:600, fontSize:14,
@@ -56,6 +60,10 @@ export default function App() {
               <Route path="/workorders/new" element={<WorkOrderForm />} />
               <Route path="/workorders/:id" element={<WorkOrderDetail />} />
               <Route path="/workorders/:id/edit" element={<WorkOrderForm />} />
+              <Route path="/vendors" element={<VendorList />} />
+              <Route path="/vendors/new" element={<VendorForm />} />
+              <Route path="/vendors/:id" element={<VendorDetail />} />
+              <Route path="/vendors/:id/edit" element={<VendorForm />} />
             </Routes>
           </Layout>
         } />
