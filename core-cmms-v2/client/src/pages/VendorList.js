@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 
@@ -6,29 +6,23 @@ const API = process.env.REACT_APP_API_URL || '';
 const NAVY = '#1B2D4F';
 const BLUE = '#3AACDC';
 
-const SCOPE_COLORS = {
-  'Building Maintenance': '#3AACDC',
-  'Roof': '#8b5cf6',
-  'HVAC': '#f59e0b',
-  'PIT': '#ef4444',
-  'Machinery': '#f97316',
-  'Electrical': '#eab308',
-  'Plumbing': '#06b6d4',
-  'Fire & Life Safety': '#dc2626',
-  'Pest Control': '#84cc16',
-  'Landscaping': '#22c55e',
-  'Janitorial': '#64748b',
-  'IT / Technology': '#6366f1',
-  'General': '#94a3b8',
-};
+const SCOPE_COLORS = [
+  '#3AACDC', '#8b5cf6', '#f59e0b', '#22c55e', '#ef4444',
+  '#06b6d4', '#ec4899', '#84cc16', '#f97316', '#6366f1'
+];
+
+function getScopeColor(scope, allScopes) {
+  const idx = allScopes.indexOf(scope);
+  return SCOPE_COLORS[idx % SCOPE_COLORS.length];
+}
 
 export default function VendorList() {
-  const [vendors, setVendors] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [filterScope, setFilterScope] = useState('');
-  const navigate = useNavigate();
   const { authFetch } = useAuth();
+  const navigate = useNavigate();
+  const [vendors, setVendors] = useState([]);
+  const [search, setSearch] = useState('');
+  const [scopeFilter, setScopeFilter] = useState('');
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     authFetch(`${API}/api/vendors`)
@@ -37,85 +31,72 @@ export default function VendorList() {
       .catch(() => setLoading(false));
   }, []);
 
-  const scopes = [...new Set(vendors.map(v => v.scope).filter(Boolean))].sort();
+  // Collect all unique scopes across all vendors
+  const allScopes = [...new Set(vendors.flatMap(v => Array.isArray(v.scope) ? v.scope : (v.scope ? [v.scope] : [])))].sort();
 
   const filtered = vendors.filter(v => {
-    const q = search.toLowerCase();
-    const matchSearch = !q ||
-      v.name.toLowerCase().includes(q) ||
-      (v.primary_contact || '').toLowerCase().includes(q) ||
-      (v.email || '').toLowerCase().includes(q) ||
-      (v.scope || '').toLowerCase().includes(q);
-    const matchScope = !filterScope || v.scope === filterScope;
+    const scopes = Array.isArray(v.scope) ? v.scope : (v.scope ? [v.scope] : []);
+    const matchSearch = !search || [v.name, v.primary_contact, v.email].some(f => f?.toLowerCase().includes(search.toLowerCase()));
+    const matchScope = !scopeFilter || scopes.includes(scopeFilter);
     return matchSearch && matchScope;
   });
 
-  if (loading) return <div style={{ padding: 40, color: '#64748b', textAlign: 'center' }}>Loading vendors...</div>;
-
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <div>
-          <h1 style={{ color: NAVY, fontSize: 24, fontWeight: 700, margin: 0 }}>Vendors</h1>
-          <p style={{ color: '#64748b', margin: '4px 0 0', fontSize: 14 }}>{vendors.length} vendor{vendors.length !== 1 ? 's' : ''} in directory</p>
+          <h1 style={{ fontSize: 22, fontWeight: 800, color: NAVY, margin: 0 }}>Vendors</h1>
+          <p style={{ color: '#64748b', fontSize: 13, marginTop: 4 }}>{vendors.length} vendor{vendors.length !== 1 ? 's' : ''} in directory</p>
         </div>
         <button onClick={() => navigate('/vendors/new')}
-          style={{ background: BLUE, color: '#fff', border: 'none', borderRadius: 8, padding: '10px 20px', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+          style={{ background: BLUE, color: '#fff', border: 'none', borderRadius: 8, padding: '10px 20px', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
           + Add Vendor
         </button>
       </div>
 
-      {/* Filters */}
-      <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search vendors, contacts, email..."
-          style={{ flex: 1, minWidth: 200, padding: '9px 14px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 14, outline: 'none' }} />
-        <select value={filterScope} onChange={e => setFilterScope(e.target.value)}
-          style={{ padding: '9px 14px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 14, background: '#fff', cursor: 'pointer' }}>
+      <div style={{ display: 'flex', gap: 12, marginBottom: 24 }}>
+        <input value={search} onChange={e => setSearch(e.target.value)}
+          placeholder="Search vendors, contacts, email..."
+          style={{ flex: 1, padding: '10px 14px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 14, outline: 'none' }} />
+        <select value={scopeFilter} onChange={e => setScopeFilter(e.target.value)}
+          style={{ padding: '10px 14px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 14, outline: 'none', minWidth: 160 }}>
           <option value="">All Scopes</option>
-          {scopes.map(s => <option key={s}>{s}</option>)}
+          {allScopes.map(s => <option key={s}>{s}</option>)}
         </select>
       </div>
 
-      {/* Cards grid */}
-      {filtered.length === 0 ? (
-        <div style={{ background: '#fff', borderRadius: 12, padding: 60, textAlign: 'center', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}>
-          <div style={{ fontSize: 40, marginBottom: 12 }}>🏢</div>
-          <div style={{ color: '#94a3b8', fontSize: 15 }}>{vendors.length === 0 ? 'No vendors yet. Add your first vendor.' : 'No vendors match your search.'}</div>
-          {vendors.length === 0 && (
-            <button onClick={() => navigate('/vendors/new')}
-              style={{ marginTop: 16, background: BLUE, color: '#fff', border: 'none', borderRadius: 8, padding: '10px 20px', cursor: 'pointer', fontWeight: 600 }}>
-              Add First Vendor
-            </button>
-          )}
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8' }}>Loading vendors...</div>
+      ) : filtered.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8' }}>
+          {vendors.length === 0 ? 'No vendors yet — add your first one!' : 'No vendors match your search.'}
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
           {filtered.map(v => {
-            const scopeColor = SCOPE_COLORS[v.scope] || '#94a3b8';
+            const scopes = Array.isArray(v.scope) ? v.scope : (v.scope ? [v.scope] : []);
             return (
               <div key={v.id} onClick={() => navigate(`/vendors/${v.id}`)}
-                style={{ background: '#fff', borderRadius: 12, padding: 20, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', cursor: 'pointer', borderTop: `3px solid ${scopeColor}`, transition: 'box-shadow 0.15s' }}
+                style={{ background: '#fff', borderRadius: 12, padding: 20, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', cursor: 'pointer', border: '1px solid #f1f5f9', transition: 'all 0.15s' }}
                 onMouseEnter={e => e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.12)'}
                 onMouseLeave={e => e.currentTarget.style.boxShadow = '0 1px 4px rgba(0,0,0,0.08)'}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
-                  <div>
-                    <div style={{ fontSize: 16, fontWeight: 700, color: NAVY }}>{v.name}</div>
-                    {v.primary_contact && <div style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>👤 {v.primary_contact}</div>}
+                  <div style={{ fontWeight: 700, fontSize: 15, color: NAVY, flex: 1, marginRight: 8 }}>{v.name}</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, justifyContent: 'flex-end' }}>
+                    {scopes.map((s, i) => (
+                      <span key={s} style={{
+                        background: getScopeColor(s, allScopes) + '20',
+                        color: getScopeColor(s, allScopes),
+                        border: `1px solid ${getScopeColor(s, allScopes)}40`,
+                        borderRadius: 20, padding: '2px 8px', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap'
+                      }}>{s}</span>
+                    ))}
                   </div>
-                  <span style={{ background: scopeColor + '20', color: scopeColor, fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, whiteSpace: 'nowrap', marginLeft: 8 }}>
-                    {v.scope || 'General'}
-                  </span>
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {v.phone && <div style={{ fontSize: 13, color: '#475569' }}>📞 {v.phone}</div>}
-                  {v.email && <div style={{ fontSize: 13, color: '#475569' }}>✉️ {v.email}</div>}
-                  {v.website && <div style={{ fontSize: 12, color: BLUE, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>🌐 {v.website}</div>}
-                </div>
-                {v.notes && (
-                  <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid #f1f5f9', fontSize: 12, color: '#94a3b8', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
-                    {v.notes}
-                  </div>
-                )}
+                {v.primary_contact && <div style={{ fontSize: 13, color: '#475569', marginBottom: 8 }}>👤 {v.primary_contact}</div>}
+                {v.phone && <div style={{ fontSize: 13, color: '#475569', marginBottom: 4 }}>📞 {v.phone}</div>}
+                {v.email && <div style={{ fontSize: 13, color: BLUE, marginBottom: 4 }}>✉️ {v.email}</div>}
+                {v.website && <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 4 }}>🌐 {v.website.replace(/^https?:\/\//, '')}</div>}
               </div>
             );
           })}
