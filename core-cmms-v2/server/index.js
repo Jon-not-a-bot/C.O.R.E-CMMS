@@ -48,20 +48,14 @@ const vendorsRouter = require('./routes/vendors');
 
 app.use('/api/auth', authRouter);
 
-app.use('/api/workorders/request', (req, res, next) => {
-  if (req.method === 'POST') return next();
-  requireAuth(req, res, next);
-});
-
 app.use('/api/assets', requireAuth, assetsRouter);
 app.use('/api/scan-nameplate', requireAuth, scanRouter);
 app.use('/api/scan-vendor-contact', requireAuth, scanVendorRouter);
 app.use('/api/vendors', requireAuth, vendorsRouter);
+
+// Allow POST to create work orders without auth (public request form)
 app.use('/api/workorders', (req, res, next) => {
-  if (req.method === 'POST' && req.path === '/') {
-    const body = req.body;
-    if (body && body.source === 'Request') return next();
-  }
+  if (req.method === 'POST' && req.path === '/') return next();
   requireAuth(req, res, next);
 }, workOrdersRouter);
 
