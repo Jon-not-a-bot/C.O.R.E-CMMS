@@ -26,24 +26,19 @@ router.post('/', upload.single('image'), async (req, res) => {
           {
             type: 'text',
             text: `Extract contact information from this image (business card, email signature, letterhead, or screenshot).
-Return ONLY a JSON object with these fields (leave blank if not found):
-{
-  "name": "company or vendor name",
-  "primary_contact": "person's full name and title",
-  "phone": "phone number",
-  "email": "email address",
-  "website": "website URL",
-  "scope": "type of service or business (e.g. HVAC, Electrical, Plumbing)"
-}
-Return only the JSON, no other text.`
+Return ONLY a raw JSON object with no markdown, no code fences, no explanation. Just the JSON:
+{"name":"company or vendor name","primary_contact":"person full name and title","phone":"phone number","email":"email address","website":"website URL","scope":"type of service e.g. HVAC, Electrical, Flooring"}`
           }
         ]
       }]
     });
 
     const text = response.content[0].text.trim();
-    const clean = text.replace(/```json|```/g, '').trim();
-    const fields = JSON.parse(clean);
+    // Robustly extract JSON - strip markdown fences and find the object
+    const stripped = text.replace(/^```[\w]*\n?/m, '').replace(/```$/m, '').trim();
+    const jsonMatch = stripped.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error('Could not parse response');
+    const fields = JSON.parse(jsonMatch[0]);
 
     res.json({ fields });
   } catch (err) {
