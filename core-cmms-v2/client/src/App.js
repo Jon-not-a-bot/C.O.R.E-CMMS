@@ -84,38 +84,23 @@ function Layout({ children }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const location = useLocation();
 
-  // Close menu on route change
   useEffect(() => { setMenuOpen(false); }, [location.pathname]);
 
-  // Close menu on outside click
   useEffect(() => {
     if (!menuOpen) return;
     const handler = (e) => {
-      if (!e.target.closest('#mobile-drawer') && !e.target.closest('#hamburger-btn')) {
-        setMenuOpen(false);
-      }
+      if (!e.target.closest('#drawer') && !e.target.closest('#hamburger-btn')) setMenuOpen(false);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [menuOpen]);
 
-  const navLinkStyle = (isActive) => ({
-    color: isActive ? BLUE : '#94a3b8',
-    textDecoration: 'none',
-    fontWeight: 600,
-    fontSize: 14,
-    padding: '20px 4px',
-    borderBottom: `3px solid ${isActive ? BLUE : 'transparent'}`,
-    transition: 'all 0.15s',
-    flexShrink: 0,
-  });
-
   const drawerLinkStyle = (isActive) => ({
     color: isActive ? BLUE : '#cbd5e1',
     textDecoration: 'none',
     fontWeight: 600,
-    fontSize: 16,
-    padding: '14px 24px',
+    fontSize: 15,
+    padding: '13px 24px',
     borderLeft: `3px solid ${isActive ? BLUE : 'transparent'}`,
     display: 'block',
     background: isActive ? 'rgba(58,172,220,0.08)' : 'transparent',
@@ -125,52 +110,24 @@ function Layout({ children }) {
   return (
     <div style={{ minHeight: '100vh', background: '#f1f5f9' }}>
       {/* ── NAV BAR ── */}
-      <nav style={{ background: NAVY, padding: '0 24px', display: 'flex', alignItems: 'center', gap: 28, boxShadow: '0 2px 8px rgba(0,0,0,0.15)', position: 'sticky', top: 0, zIndex: 200 }}>
-        {/* Logo */}
+      <nav style={{ background: NAVY, padding: '0 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 2px 8px rgba(0,0,0,0.15)', position: 'sticky', top: 0, zIndex: 200 }}>
         <div style={{ fontWeight: 900, fontSize: 20, letterSpacing: 2, color: '#fff', padding: '16px 0', flexShrink: 0 }}>
           C.O.R.E. <span style={{ fontWeight: 300, fontSize: 14, color: '#94a3b8', letterSpacing: 0 }}>CMMS</span>
         </div>
-
-        {/* Desktop links */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 28 }} className="desktop-nav">
-          {NAV_LINKS.map(({ to, label }) => (
-            <NavLink key={to} to={to} end={to === '/'} style={({ isActive }) => navLinkStyle(isActive)}>{label}</NavLink>
-          ))}
-        </div>
-
-        {/* Desktop right actions */}
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 12, alignItems: 'center' }} className="desktop-nav">
-          <NewDropdown isAdmin={user?.role === 'admin'} />
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingLeft: 12, borderLeft: '1px solid rgba(255,255,255,0.1)' }}>
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#fff' }}>{user?.name}</div>
-              <div style={{ fontSize: 11, color: '#94a3b8', textTransform: 'capitalize' }}>{user?.role}</div>
-            </div>
-            <button onClick={logout} style={{ background: 'rgba(255,255,255,0.1)', color: '#94a3b8', border: 'none', borderRadius: 6, padding: '6px 12px', fontSize: 12, cursor: 'pointer', fontWeight: 500 }}>
-              Sign Out
-            </button>
-          </div>
-        </div>
-
-        {/* Mobile hamburger */}
-        <div id="hamburger-btn" onClick={() => setMenuOpen(o => !o)} style={{ marginLeft: 'auto', display: 'none', padding: 8, cursor: 'pointer' }} className="mobile-nav">
+        <div id="hamburger-btn" onClick={() => setMenuOpen(o => !o)} style={{ padding: 8, cursor: 'pointer' }}>
           <HamburgerIcon open={menuOpen} />
         </div>
       </nav>
 
-      {/* ── MOBILE DRAWER ── */}
-      <div
-        id="mobile-drawer"
-        style={{
-          position: 'fixed', top: 0, right: 0, height: '100vh', width: 280,
-          background: NAVY, zIndex: 300, display: 'flex', flexDirection: 'column',
-          transform: menuOpen ? 'translateX(0)' : 'translateX(100%)',
-          transition: 'transform 0.25s ease',
-          boxShadow: menuOpen ? '-4px 0 20px rgba(0,0,0,0.3)' : 'none',
-        }}
-        className="mobile-only"
-      >
-        {/* Drawer header */}
+      {/* ── DRAWER ── */}
+      <div id="drawer" style={{
+        position: 'fixed', top: 0, right: 0, height: '100vh', width: 290,
+        background: NAVY, zIndex: 300, display: 'flex', flexDirection: 'column',
+        transform: menuOpen ? 'translateX(0)' : 'translateX(100%)',
+        transition: 'transform 0.25s ease',
+        boxShadow: menuOpen ? '-4px 0 20px rgba(0,0,0,0.3)' : 'none',
+      }}>
+        {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
           <div style={{ fontWeight: 900, fontSize: 18, letterSpacing: 2, color: '#fff' }}>
             C.O.R.E. <span style={{ fontWeight: 300, fontSize: 13, color: '#94a3b8' }}>CMMS</span>
@@ -179,13 +136,14 @@ function Layout({ children }) {
         </div>
 
         {/* User info */}
-        <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+        <div style={{ padding: '14px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
           <div style={{ fontSize: 14, fontWeight: 600, color: '#fff' }}>{user?.name}</div>
           <div style={{ fontSize: 12, color: '#94a3b8', textTransform: 'capitalize' }}>{user?.role}</div>
         </div>
 
         {/* Nav links */}
         <div style={{ flex: 1, overflowY: 'auto', paddingTop: 8 }}>
+          <div style={{ padding: '8px 24px 4px', fontSize: 10, color: '#475569', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1 }}>Navigate</div>
           {NAV_LINKS.map(({ to, label }) => (
             <NavLink key={to} to={to} end={to === '/'} style={({ isActive }) => drawerLinkStyle(isActive)}>{label}</NavLink>
           ))}
@@ -195,10 +153,11 @@ function Layout({ children }) {
 
           {/* Quick actions */}
           <div style={{ padding: '16px 24px 8px', borderTop: '1px solid rgba(255,255,255,0.08)', marginTop: 8 }}>
-            <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12 }}>Quick Actions</div>
-            <NavLink to="/assets/new" style={{ display: 'block', background: BLUE, color: '#fff', textDecoration: 'none', borderRadius: 8, padding: '12px 16px', fontWeight: 600, fontSize: 14, marginBottom: 10, textAlign: 'center' }}>+ New Asset</NavLink>
-            <NavLink to="/workorders/new" style={{ display: 'block', background: 'transparent', color: BLUE, border: `1px solid ${BLUE}`, textDecoration: 'none', borderRadius: 8, padding: '11px 16px', fontWeight: 600, fontSize: 14, textAlign: 'center', marginBottom: 10 }}>+ New Work Order</NavLink>
-            <NavLink to="/vendors/new" style={{ display: 'block', background: 'transparent', color: BLUE, border: `1px solid ${BLUE}`, textDecoration: 'none', borderRadius: 8, padding: '11px 16px', fontWeight: 600, fontSize: 14, textAlign: 'center' }}>+ New Vendor</NavLink>
+            <div style={{ fontSize: 10, color: '#475569', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>Quick Create</div>
+            <NavLink to="/assets/new" style={{ display: 'block', background: BLUE, color: '#fff', textDecoration: 'none', borderRadius: 8, padding: '11px 16px', fontWeight: 600, fontSize: 14, marginBottom: 8, textAlign: 'center' }}>+ New Asset</NavLink>
+            <NavLink to="/workorders/new" style={{ display: 'block', background: 'transparent', color: BLUE, border: `1px solid ${BLUE}`, textDecoration: 'none', borderRadius: 8, padding: '10px 16px', fontWeight: 600, fontSize: 14, textAlign: 'center', marginBottom: 8 }}>+ New Work Order</NavLink>
+            <NavLink to="/vendors/new" style={{ display: 'block', background: 'transparent', color: BLUE, border: `1px solid ${BLUE}`, textDecoration: 'none', borderRadius: 8, padding: '10px 16px', fontWeight: 600, fontSize: 14, textAlign: 'center', marginBottom: 8 }}>+ New Vendor</NavLink>
+            <NavLink to="/pm-schedules/new" style={{ display: 'block', background: 'transparent', color: BLUE, border: `1px solid ${BLUE}`, textDecoration: 'none', borderRadius: 8, padding: '10px 16px', fontWeight: 600, fontSize: 14, textAlign: 'center' }}>+ New PM Schedule</NavLink>
           </div>
         </div>
 
@@ -210,26 +169,16 @@ function Layout({ children }) {
         </div>
       </div>
 
-      {/* Drawer overlay */}
+      {/* Overlay */}
       {menuOpen && (
-        <div
-          onClick={() => setMenuOpen(false)}
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 299 }}
-          className="mobile-only"
-        />
+        <div onClick={() => setMenuOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 299 }} />
       )}
 
       <main style={{ maxWidth: 1400, margin: '0 auto', padding: '32px 24px' }}>{children}</main>
 
-      {/* ── RESPONSIVE STYLES ── */}
       <style>{`
         @media (max-width: 768px) {
-          .desktop-nav { display: none !important; }
-          .mobile-nav { display: flex !important; }
           main { padding: 16px 16px !important; }
-        }
-        @media (min-width: 769px) {
-          .mobile-only { display: none !important; }
         }
       `}</style>
     </div>
