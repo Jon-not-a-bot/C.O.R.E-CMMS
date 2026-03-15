@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../AuthContext';
 
 const API = process.env.REACT_APP_API_URL || '';
 const NAVY = '#1B2D4F';
@@ -45,15 +46,20 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
   const navigate = useNavigate();
+  const { authFetch } = useAuth();
   const time = useClock();
   const wx = useWeather();
   const isMobile = useIsMobile();
 
   useEffect(() => {
     Promise.all([
-      fetch(`${API}/api/assets`).then(r => r.json()).catch(() => []),
-      fetch(`${API}/api/workorders`).then(r => r.json()).catch(() => [])
-    ]).then(([a, w]) => { setAssets(a); setWos(w); setLoading(false); });
+      authFetch(`${API}/api/assets`).then(r => r.json()).catch(() => []),
+      authFetch(`${API}/api/workorders`).then(r => r.json()).catch(() => [])
+    ]).then(([a, w]) => {
+      setAssets(Array.isArray(a) ? a : []);
+      setWos(Array.isArray(w) ? w : []);
+      setLoading(false);
+    });
   }, []);
 
   const copyRequestLink = () => {
