@@ -38,7 +38,7 @@ function HamburgerIcon({ open }) {
   );
 }
 
-function NewDropdown() {
+function NewDropdown({ isAdmin }) {
   const [open, setOpen] = useState(false);
   const location = useLocation();
   useEffect(() => { setOpen(false); }, [location.pathname]);
@@ -54,6 +54,7 @@ function NewDropdown() {
     { to: '/workorders/new', label: '📋 New Work Order' },
     { to: '/vendors/new', label: '🏢 New Vendor' },
     { to: '/pm-schedules/new', label: '🔁 New PM Schedule' },
+    ...(isAdmin ? [{ to: '/users', label: '👤 Manage Users', divider: true }] : []),
   ];
 
   return (
@@ -66,7 +67,7 @@ function NewDropdown() {
         <div style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, background: '#fff', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.15)', minWidth: 200, zIndex: 500, overflow: 'hidden' }}>
           {items.map(item => (
             <NavLink key={item.to} to={item.to}
-              style={{ display: 'block', padding: '11px 16px', fontSize: 13, fontWeight: 500, color: '#1e293b', textDecoration: 'none', borderBottom: '1px solid #f1f5f9', transition: 'background 0.1s' }}
+              style={{ display: 'block', padding: '11px 16px', fontSize: 13, fontWeight: 500, color: '#1e293b', textDecoration: 'none', borderTop: item.divider ? '1px solid #e2e8f0' : 'none', borderBottom: '1px solid #f1f5f9' }}
               onMouseEnter={e => e.currentTarget.style.background = '#f0f9ff'}
               onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
               {item.label}
@@ -135,14 +136,11 @@ function Layout({ children }) {
           {NAV_LINKS.map(({ to, label }) => (
             <NavLink key={to} to={to} end={to === '/'} style={({ isActive }) => navLinkStyle(isActive)}>{label}</NavLink>
           ))}
-          {user?.role === 'admin' && (
-            <NavLink to="/users" style={({ isActive }) => navLinkStyle(isActive)}>Users</NavLink>
-          )}
         </div>
 
         {/* Desktop right actions */}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 12, alignItems: 'center' }} className="desktop-nav">
-          <NewDropdown />
+          <NewDropdown isAdmin={user?.role === 'admin'} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingLeft: 12, borderLeft: '1px solid rgba(255,255,255,0.1)' }}>
             <div style={{ textAlign: 'right' }}>
               <div style={{ fontSize: 13, fontWeight: 600, color: '#fff' }}>{user?.name}</div>
