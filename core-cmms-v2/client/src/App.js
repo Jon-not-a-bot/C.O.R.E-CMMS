@@ -38,6 +38,46 @@ function HamburgerIcon({ open }) {
   );
 }
 
+function NewDropdown() {
+  const [open, setOpen] = useState(false);
+  const location = useLocation();
+  useEffect(() => { setOpen(false); }, [location.pathname]);
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => { if (!e.target.closest('#new-dropdown')) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  const items = [
+    { to: '/assets/new', label: '🔧 New Asset' },
+    { to: '/workorders/new', label: '📋 New Work Order' },
+    { to: '/vendors/new', label: '🏢 New Vendor' },
+    { to: '/pm-schedules/new', label: '🔁 New PM Schedule' },
+  ];
+
+  return (
+    <div id="new-dropdown" style={{ position: 'relative' }}>
+      <button onClick={() => setOpen(o => !o)}
+        style={{ background: BLUE, color: '#fff', border: 'none', borderRadius: 7, padding: '8px 16px', fontWeight: 600, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+        + New <span style={{ fontSize: 10, opacity: 0.8 }}>▼</span>
+      </button>
+      {open && (
+        <div style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, background: '#fff', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.15)', minWidth: 200, zIndex: 500, overflow: 'hidden' }}>
+          {items.map(item => (
+            <NavLink key={item.to} to={item.to}
+              style={{ display: 'block', padding: '11px 16px', fontSize: 13, fontWeight: 500, color: '#1e293b', textDecoration: 'none', borderBottom: '1px solid #f1f5f9', transition: 'background 0.1s' }}
+              onMouseEnter={e => e.currentTarget.style.background = '#f0f9ff'}
+              onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
+              {item.label}
+            </NavLink>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Layout({ children }) {
   const { user, logout } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -102,9 +142,7 @@ function Layout({ children }) {
 
         {/* Desktop right actions */}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 12, alignItems: 'center' }} className="desktop-nav">
-          <NavLink to="/assets/new" style={{ background: BLUE, color: '#fff', textDecoration: 'none', borderRadius: 7, padding: '8px 16px', fontWeight: 600, fontSize: 13, flexShrink: 0 }}>+ Asset</NavLink>
-          <NavLink to="/workorders/new" style={{ background: 'transparent', color: BLUE, border: `1px solid ${BLUE}`, textDecoration: 'none', borderRadius: 7, padding: '7px 14px', fontWeight: 600, fontSize: 13, flexShrink: 0 }}>+ WO</NavLink>
-          <NavLink to="/vendors/new" style={{ background: 'transparent', color: BLUE, border: `1px solid ${BLUE}`, textDecoration: 'none', borderRadius: 7, padding: '7px 14px', fontWeight: 600, fontSize: 13, flexShrink: 0 }}>+ Vendor</NavLink>
+          <NewDropdown />
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingLeft: 12, borderLeft: '1px solid rgba(255,255,255,0.1)' }}>
             <div style={{ textAlign: 'right' }}>
               <div style={{ fontSize: 13, fontWeight: 600, color: '#fff' }}>{user?.name}</div>
