@@ -46,6 +46,7 @@ const scanVendorRouter = require('./routes/scan-vendor');
 const workOrdersRouter = require('./routes/workorders');
 const vendorsRouter = require('./routes/vendors');
 const pmTemplatesRouter = require('./routes/pm-templates');
+const usersRouter = require('./routes/users');
 
 app.use('/api/auth', authRouter);
 
@@ -54,6 +55,7 @@ app.use('/api/scan-nameplate', requireAuth, scanRouter);
 app.use('/api/scan-vendor-contact', requireAuth, scanVendorRouter);
 app.use('/api/vendors', requireAuth, vendorsRouter);
 app.use('/api/pm-templates', requireAuth, pmTemplatesRouter);
+app.use('/api/users', requireAuth, usersRouter);
 
 // Allow POST to create work orders without auth (public request form)
 app.use('/api/workorders', (req, res, next) => {
