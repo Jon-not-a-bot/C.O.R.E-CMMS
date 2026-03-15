@@ -101,6 +101,7 @@ function Layout({ children }) {
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 12, alignItems: 'center' }} className="desktop-nav">
           <NavLink to="/assets/new" style={{ background: BLUE, color: '#fff', textDecoration: 'none', borderRadius: 7, padding: '8px 16px', fontWeight: 600, fontSize: 13, flexShrink: 0 }}>+ Asset</NavLink>
           <NavLink to="/workorders/new" style={{ background: 'transparent', color: BLUE, border: `1px solid ${BLUE}`, textDecoration: 'none', borderRadius: 7, padding: '7px 14px', fontWeight: 600, fontSize: 13, flexShrink: 0 }}>+ WO</NavLink>
+          <NavLink to="/vendors/new" style={{ background: 'transparent', color: BLUE, border: `1px solid ${BLUE}`, textDecoration: 'none', borderRadius: 7, padding: '7px 14px', fontWeight: 600, fontSize: 13, flexShrink: 0 }}>+ Vendor</NavLink>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingLeft: 12, borderLeft: '1px solid rgba(255,255,255,0.1)' }}>
             <div style={{ textAlign: 'right' }}>
               <div style={{ fontSize: 13, fontWeight: 600, color: '#fff' }}>{user?.name}</div>
@@ -157,7 +158,8 @@ function Layout({ children }) {
           <div style={{ padding: '16px 24px 8px', borderTop: '1px solid rgba(255,255,255,0.08)', marginTop: 8 }}>
             <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12 }}>Quick Actions</div>
             <NavLink to="/assets/new" style={{ display: 'block', background: BLUE, color: '#fff', textDecoration: 'none', borderRadius: 8, padding: '12px 16px', fontWeight: 600, fontSize: 14, marginBottom: 10, textAlign: 'center' }}>+ New Asset</NavLink>
-            <NavLink to="/workorders/new" style={{ display: 'block', background: 'transparent', color: BLUE, border: `1px solid ${BLUE}`, textDecoration: 'none', borderRadius: 8, padding: '11px 16px', fontWeight: 600, fontSize: 14, textAlign: 'center' }}>+ New Work Order</NavLink>
+            <NavLink to="/workorders/new" style={{ display: 'block', background: 'transparent', color: BLUE, border: `1px solid ${BLUE}`, textDecoration: 'none', borderRadius: 8, padding: '11px 16px', fontWeight: 600, fontSize: 14, textAlign: 'center', marginBottom: 10 }}>+ New Work Order</NavLink>
+            <NavLink to="/vendors/new" style={{ display: 'block', background: 'transparent', color: BLUE, border: `1px solid ${BLUE}`, textDecoration: 'none', borderRadius: 8, padding: '11px 16px', fontWeight: 600, fontSize: 14, textAlign: 'center' }}>+ New Vendor</NavLink>
           </div>
         </div>
 
