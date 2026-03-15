@@ -16,6 +16,7 @@ import VendorForm from './pages/VendorForm';
 import VendorDetail from './pages/VendorDetail';
 import PMTemplateList from './pages/PMTemplateList';
 import PMTemplateForm from './pages/PMTemplateForm';
+import TechLayout from './pages/TechLayout';
 
 const NAVY = '#1B2D4F';
 const BLUE = '#3AACDC';
@@ -201,8 +202,14 @@ function AppRoutes() {
     <Routes>
       <Route path="/login" element={user ? <Navigate to="/" replace /> : <Login />} />
       <Route path="/request" element={<WorkRequest />} />
+      <Route path="/tech/*" element={
+        <ProtectedRoute>
+          {user?.role === 'technician' ? <TechLayout /> : <Navigate to="/" replace />}
+        </ProtectedRoute>
+      } />
       <Route path="/*" element={
         <ProtectedRoute>
+          {user?.role === 'technician' ? <Navigate to="/tech" replace /> :
           <Layout>
             <Routes>
               <Route path="/" element={<Dashboard />} />
@@ -223,7 +230,7 @@ function AppRoutes() {
               <Route path="/pm-schedules/new" element={<PMTemplateForm />} />
               <Route path="/pm-schedules/:id/edit" element={<PMTemplateForm />} />
             </Routes>
-          </Layout>
+          </Layout>}
         </ProtectedRoute>
       } />
     </Routes>
