@@ -22,7 +22,7 @@ function TabBar() {
           flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
           padding: '10px 0 12px', textDecoration: 'none', gap: 3,
           color: isActive ? BLUE : '#94a3b8',
-          borderTop: `2px solid ${isActive ? BLUE : 'transparent'}',
+          borderTop: isActive ? `2px solid ${BLUE}` : '2px solid transparent',
         })}>
           <span style={{ fontSize: 22 }}>{t.icon}</span>
           <span style={{ fontSize: 11, fontWeight: 600 }}>{t.label}</span>
