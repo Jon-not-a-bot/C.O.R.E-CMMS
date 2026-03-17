@@ -100,4 +100,3 @@ router.put('/change-password', requireAuth, async (req, res) => {
 
 module.exports = router;
 module.exports.requireAuth = requireAuth;
-d
