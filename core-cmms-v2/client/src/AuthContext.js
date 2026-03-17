@@ -30,8 +30,8 @@ export function AuthProvider({ children }) {
         return r.json();
       })
       .then(data => {
-        setUser(data.user);
-      })
+        setUser(data.user ?? data);
+           })
       .catch(err => {
         console.warn('[C.O.R.E.] Token verification failed:', err.message);
         localStorage.removeItem('core_token');
