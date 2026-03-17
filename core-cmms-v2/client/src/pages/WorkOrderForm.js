@@ -11,11 +11,20 @@ const LOCATIONS = ['Production Floor','Dock Area','Office','Roof','Exterior','Me
 const CATEGORY_TECH = {'PIT Fleet':'PIT Tech','Dock Equipment':'Dock Tech','HVAC & Heating':'HVAC Tech','Electrical':'Electrical Tech','Life Safety':'Safety Tech','Building Envelope':'Facilities Tech','Utilities':'Facilities Tech','General':'Facilities Tech'};
 
 const inputStyle = { padding:'9px 12px', border:'1px solid #e2e8f0', borderRadius:8, fontSize:14, outline:'none', background:'#fff', width:'100%', boxSizing:'border-box' };
+
+// ── Defined OUTSIDE the component so they never remount ──
 const Field = ({ label, required, hint, children }) => (
   <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
     <label style={{ fontSize:13, fontWeight:600, color:'#374151' }}>{label}{required && <span style={{ color:'#ef4444' }}> *</span>}</label>
     {children}
     {hint && <div style={{ fontSize:11, color:'#94a3b8' }}>{hint}</div>}
+  </div>
+);
+
+const Section = ({ title, children }) => (
+  <div style={{ background:'#fff', borderRadius:12, padding:24, boxShadow:'0 1px 4px rgba(0,0,0,0.08)', marginBottom:20 }}>
+    <h3 style={{ fontSize:15, fontWeight:700, color:NAVY, marginBottom:20, paddingBottom:12, borderBottom:'2px solid #f1f5f9' }}>{title}</h3>
+    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(240px, 1fr))', gap:16 }}>{children}</div>
   </div>
 );
 
@@ -32,6 +41,7 @@ export default function WorkOrderForm() {
   });
   const [assets, setAssets] = useState([]);
   const [vendors, setVendors] = useState([]);
+  const [users, setUsers] = useState([]);
   const [photos, setPhotos] = useState([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -39,6 +49,7 @@ export default function WorkOrderForm() {
   useEffect(() => {
     authFetch(`${API}/api/assets`).then(r => r.json()).then(data => setAssets(Array.isArray(data) ? data : [])).catch(() => {});
     authFetch(`${API}/api/vendors`).then(r => r.json()).then(data => setVendors(Array.isArray(data) ? data : [])).catch(() => {});
+    authFetch(`${API}/api/users`).then(r => r.json()).then(data => setUsers(Array.isArray(data) ? data : [])).catch(() => {});
     if (isEdit) {
       authFetch(`${API}/api/workorders/${id}`).then(r => r.json()).then(wo => {
         setForm({
@@ -63,7 +74,6 @@ export default function WorkOrderForm() {
           next.category = asset.category;
           next.assigned_to = CATEGORY_TECH[asset.category] || 'Facilities Tech';
           next.location = asset.location || next.location;
-          // Auto-set vendor if asset has a preferred vendor
           if (asset.vendor_id) next.vendor_id = String(asset.vendor_id);
         }
       }
@@ -79,11 +89,7 @@ export default function WorkOrderForm() {
       const method = isEdit ? 'PUT' : 'POST';
       let res;
       if (isEdit) {
-        res = await authFetch(url, {
-          method,
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(form)
-        });
+        res = await authFetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) });
       } else {
         const data = new FormData();
         Object.entries(form).forEach(([k, v]) => data.append(k, v));
@@ -95,13 +101,6 @@ export default function WorkOrderForm() {
     } catch (err) { setError(err.message); }
     setSaving(false);
   };
-
-  const Section = ({ title, children }) => (
-    <div style={{ background:'#fff', borderRadius:12, padding:24, boxShadow:'0 1px 4px rgba(0,0,0,0.08)', marginBottom:20 }}>
-      <h3 style={{ fontSize:15, fontWeight:700, color:NAVY, marginBottom:20, paddingBottom:12, borderBottom:'2px solid #f1f5f9' }}>{title}</h3>
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(240px, 1fr))', gap:16 }}>{children}</div>
-    </div>
-  );
 
   const selectedVendor = vendors.find(v => String(v.id) === String(form.vendor_id));
 
@@ -129,7 +128,9 @@ export default function WorkOrderForm() {
       </div>
 
       <Section title="Work Order Details">
-        <Field label="Title" required><input style={inputStyle} value={form.title} onChange={e => set('title', e.target.value)} placeholder="e.g. Forklift #2 won't start" /></Field>
+        <Field label="Title" required>
+          <input style={inputStyle} value={form.title} onChange={e => set('title', e.target.value)} placeholder="e.g. Forklift #2 won't start" />
+        </Field>
         <Field label="Type">
           <select style={inputStyle} value={form.type} onChange={e => set('type', e.target.value)}>
             {['Repair','PM','Inspection','Installation','Safety','Cleaning','Other'].map(t => <option key={t}>{t}</option>)}
@@ -151,9 +152,21 @@ export default function WorkOrderForm() {
             {assets.map(a => <option key={a.id} value={a.id}>{a.name} ({a.asset_id || 'No ID'})</option>)}
           </select>
         </Field>
-        <Field label="Due Date"><input type="date" style={inputStyle} value={form.due_date} onChange={e => set('due_date', e.target.value)} /></Field>
-        <Field label="Managed By (Internal Tech)" hint="Your team member who owns this work order">
-          <input style={{ ...inputStyle, background:'#f8fafc', color:'#64748b' }} value={form.assigned_to} readOnly />
+        <Field label="Due Date">
+          <input type="date" style={inputStyle} value={form.due_date} onChange={e => set('due_date', e.target.value)} />
+        </Field>
+        <Field label="Assign To" hint="Select a team member or enter a role">
+          <select style={inputStyle} value={form.assigned_to} onChange={e => set('assigned_to', e.target.value)}>
+            <option value="">— Unassigned —</option>
+            {users.map(u => (
+              <option key={u.id} value={u.name}>{u.name} ({u.role})</option>
+            ))}
+            <optgroup label="── Roles ──">
+              {['PIT Tech','Dock Tech','HVAC Tech','Electrical Tech','Safety Tech','Facilities Tech'].map(r => (
+                <option key={r} value={r}>{r}</option>
+              ))}
+            </optgroup>
+          </select>
         </Field>
         {isEdit && (
           <Field label="Status">
@@ -166,41 +179,27 @@ export default function WorkOrderForm() {
 
       {/* Vendor Assignment */}
       <div style={{ background:'#fff', borderRadius:12, padding:24, boxShadow:'0 1px 4px rgba(0,0,0,0.08)', marginBottom:20 }}>
-        <h3 style={{ fontSize:15, fontWeight:700, color:NAVY, marginBottom:6, paddingBottom:12, borderBottom:'2px solid #f1f5f9' }}>Vendor Assignment <span style={{ fontSize:13, fontWeight:400, color:'#94a3b8' }}>(optional)</span></h3>
+        <h3 style={{ fontSize:15, fontWeight:700, color:NAVY, marginBottom:6, paddingBottom:12, borderBottom:'2px solid #f1f5f9' }}>
+          Vendor Assignment <span style={{ fontSize:13, fontWeight:400, color:'#94a3b8' }}>(optional)</span>
+        </h3>
         <p style={{ fontSize:13, color:'#94a3b8', marginBottom:16 }}>Assign a vendor to this work order. Your internal tech still manages and closes it — the vendor is logged as the service provider.</p>
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(240px, 1fr))', gap:16 }}>
           <Field label="Vendor" hint="Auto-filled if the linked asset has a preferred vendor">
             <select style={inputStyle} value={form.vendor_id} onChange={e => set('vendor_id', e.target.value)}>
               <option value="">— No vendor / internal only —</option>
-              {vendors.map(v => <option key={v.id} value={v.id}>{v.name} ({v.scope})</option>)}
+              {vendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
             </select>
           </Field>
         </div>
-        {/* Vendor contact quick-view */}
         {selectedVendor && (
           <div style={{ marginTop:16, background:'#f8fafc', borderRadius:10, padding:16, display:'flex', gap:24, flexWrap:'wrap' }}>
             <div>
               <div style={{ fontSize:11, color:'#94a3b8', fontWeight:600, marginBottom:3 }}>CONTACT</div>
               <div style={{ fontSize:13, color:'#1e293b', fontWeight:600 }}>{selectedVendor.primary_contact || selectedVendor.name}</div>
             </div>
-            {selectedVendor.phone && (
-              <div>
-                <div style={{ fontSize:11, color:'#94a3b8', fontWeight:600, marginBottom:3 }}>PHONE</div>
-                <a href={`tel:${selectedVendor.phone}`} style={{ fontSize:13, color:BLUE, textDecoration:'none' }}>{selectedVendor.phone}</a>
-              </div>
-            )}
-            {selectedVendor.email && (
-              <div>
-                <div style={{ fontSize:11, color:'#94a3b8', fontWeight:600, marginBottom:3 }}>EMAIL</div>
-                <a href={`mailto:${selectedVendor.email}`} style={{ fontSize:13, color:BLUE, textDecoration:'none' }}>{selectedVendor.email}</a>
-              </div>
-            )}
-            {selectedVendor.website && (
-              <div>
-                <div style={{ fontSize:11, color:'#94a3b8', fontWeight:600, marginBottom:3 }}>PORTAL</div>
-                <a href={selectedVendor.website} target="_blank" rel="noopener noreferrer" style={{ fontSize:13, color:BLUE, textDecoration:'none' }}>Open →</a>
-              </div>
-            )}
+            {selectedVendor.phone && <div><div style={{ fontSize:11, color:'#94a3b8', fontWeight:600, marginBottom:3 }}>PHONE</div><a href={`tel:${selectedVendor.phone}`} style={{ fontSize:13, color:BLUE, textDecoration:'none' }}>{selectedVendor.phone}</a></div>}
+            {selectedVendor.email && <div><div style={{ fontSize:11, color:'#94a3b8', fontWeight:600, marginBottom:3 }}>EMAIL</div><a href={`mailto:${selectedVendor.email}`} style={{ fontSize:13, color:BLUE, textDecoration:'none' }}>{selectedVendor.email}</a></div>}
+            {selectedVendor.website && <div><div style={{ fontSize:11, color:'#94a3b8', fontWeight:600, marginBottom:3 }}>PORTAL</div><a href={selectedVendor.website} target="_blank" rel="noopener noreferrer" style={{ fontSize:13, color:BLUE, textDecoration:'none' }}>Open →</a></div>}
           </div>
         )}
       </div>
