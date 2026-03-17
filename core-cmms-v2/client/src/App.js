@@ -17,6 +17,7 @@ import VendorDetail from './pages/VendorDetail';
 import PMTemplateList from './pages/PMTemplateList';
 import PMTemplateForm from './pages/PMTemplateForm';
 import TechLayout from './pages/TechLayout';
+import ChangePassword from './pages/ChangePassword';
 
 const NAVY = '#1B2D4F';
 const BLUE = '#3AACDC';
@@ -164,6 +165,9 @@ function Layout({ children }) {
 
         {/* Sign out */}
         <div style={{ padding: '16px 24px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+          <NavLink to="/change-password" style={{ display: 'block', background: 'rgba(255,255,255,0.05)', color: '#94a3b8', textDecoration: 'none', borderRadius: 8, padding: '10px 16px', fontSize: 13, fontWeight: 500, textAlign: 'center', marginBottom: 8 }}>
+            🔑 Change Password
+          </NavLink>
           <button onClick={logout} style={{ width: '100%', background: 'rgba(255,255,255,0.07)', color: '#94a3b8', border: 'none', borderRadius: 8, padding: '12px', fontSize: 14, cursor: 'pointer', fontWeight: 500 }}>
             Sign Out
           </button>
@@ -229,6 +233,7 @@ function AppRoutes() {
               <Route path="/pm-schedules" element={<PMTemplateList />} />
               <Route path="/pm-schedules/new" element={<PMTemplateForm />} />
               <Route path="/pm-schedules/:id/edit" element={<PMTemplateForm />} />
+              <Route path="/change-password" element={<ChangePassword />} />
             </Routes>
           </Layout>}
         </ProtectedRoute>
