@@ -17,7 +17,7 @@ import VendorDetail from './pages/VendorDetail';
 import PMTemplateList from './pages/PMTemplateList';
 import PMTemplateForm from './pages/PMTemplateForm';
 import TechLayout from './pages/TechLayout';
-import ChangePassword from './pages/ChangePassword';
+import ChangePassword from './pages/changePassword';
 
 const NAVY = '#1B2D4F';
 const BLUE = '#3AACDC';
