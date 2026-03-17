@@ -7,7 +7,7 @@ const NAVY = '#1B2D4F';
 const BLUE = '#3AACDC';
 
 const CATEGORIES = ['PIT Fleet','Dock Equipment','HVAC & Heating','Electrical','Life Safety','Building Envelope','Utilities','General'];
-const LOCATIONS = ['Production Floor','Dock Area','Office','Roof','Exterior','Mechanical Room','Break Room','Parking Lot','Throughout'];
+const LOCATIONS = ['Production Floor','Dock Area','Dock Yard','Office','Administrative Office','Employee Support Office','Restrooms','Electrical Room','Roof','Exterior','Mechanical Room','Break Room','Parking Lot','Throughout'];
 const CATEGORY_TECH = {'PIT Fleet':'PIT Tech','Dock Equipment':'Dock Tech','HVAC & Heating':'HVAC Tech','Electrical':'Electrical Tech','Life Safety':'Safety Tech','Building Envelope':'Facilities Tech','Utilities':'Facilities Tech','General':'Facilities Tech'};
 
 const inputStyle = { padding:'9px 12px', border:'1px solid #e2e8f0', borderRadius:8, fontSize:14, outline:'none', background:'#fff', width:'100%', boxSizing:'border-box' };
