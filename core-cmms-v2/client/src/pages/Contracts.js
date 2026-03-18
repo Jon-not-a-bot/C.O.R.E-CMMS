@@ -143,6 +143,7 @@ function ContractCalendar({ contracts }) {
 // ── Contract Form Modal ──
 function ContractForm({ contract, vendors, assets, onSave, onClose }) {
   const { authFetch } = useAuth();
+  const scanInputRef = React.useRef();
   const [form, setForm] = useState({
     name: contract?.name || '',
     vendor_id: contract?.vendor_id || '',
@@ -155,11 +156,42 @@ function ContractForm({ contract, vendors, assets, onSave, onClose }) {
     auto_renew: contract?.auto_renew || false,
     value: contract?.value || '',
     notes: contract?.notes || '',
+    document_url: contract?.document_url || '',
   });
   const [saving, setSaving] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [scanResult, setScanResult] = useState(null);
   const [error, setError] = useState('');
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const inp = { padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 14, width: '100%', boxSizing: 'border-box', outline: 'none' };
+
+  const handleScan = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setScanning(true); setScanResult(null);
+    try {
+      const formData = new FormData();
+      formData.append('document', file);
+      const res = await authFetch(`${API}/api/scan-contract`, { method: 'POST', body: formData });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Scan failed');
+      const f = data.fields;
+      setForm(prev => ({
+        ...prev,
+        name: f.name || prev.name,
+        type: f.type || prev.type,
+        value: f.value || prev.value,
+        start_date: f.start_date || prev.start_date,
+        end_date: f.end_date || prev.end_date,
+        notice_period_days: f.notice_period_days || prev.notice_period_days,
+        auto_renew: f.auto_renew !== undefined ? f.auto_renew : prev.auto_renew,
+        notes: f.notes ? (prev.notes ? prev.notes + '\n\n' + f.notes : f.notes) : prev.notes,
+        document_url: data.document_url || prev.document_url,
+      }));
+      setScanResult({ success: true, vendor_name: f.vendor_name });
+    } catch (err) { setScanResult({ success: false, error: err.message }); }
+    setScanning(false);
+  };
 
   const handleSave = async () => {
     if (!form.name.trim()) { setError('Contract name is required'); return; }
@@ -181,6 +213,37 @@ function ContractForm({ contract, vendors, assets, onSave, onClose }) {
           <h2 style={{ color: NAVY, fontSize: 18, fontWeight: 700, margin: 0 }}>{contract ? 'Edit Contract' : 'New Contract'}</h2>
           <div onClick={onClose} style={{ cursor: 'pointer', color: '#94a3b8', fontSize: 22 }}>✕</div>
         </div>
+
+        {/* Scan banner */}
+        <div style={{ background: NAVY, borderRadius: 10, padding: '14px 18px', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <div>
+            <div style={{ color: '#fff', fontWeight: 700, fontSize: 14 }}>📄 Upload Contract Document</div>
+            <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 2 }}>PDF or image — AI will auto-fill fields from the document</div>
+          </div>
+          <div>
+            <input ref={scanInputRef} type="file" accept="image/*,.pdf" onChange={handleScan} style={{ display: 'none' }} />
+            <button onClick={() => scanInputRef.current.click()} disabled={scanning}
+              style={{ background: scanning ? '#64748b' : BLUE, color: '#fff', border: 'none', borderRadius: 8, padding: '8px 18px', fontSize: 13, fontWeight: 700, cursor: scanning ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap' }}>
+              {scanning ? 'Scanning...' : 'Upload & Scan'}
+            </button>
+          </div>
+        </div>
+
+        {scanResult && (
+          <div style={{ background: scanResult.success ? '#f0fdf4' : '#fef2f2', border: `1px solid ${scanResult.success ? '#bbf7d0' : '#fecaca'}`, borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: 13 }}>
+            {scanResult.success
+              ? <span style={{ color: '#16a34a', fontWeight: 700 }}>✓ Contract scanned — fields auto-filled. Review before saving.{scanResult.vendor_name ? ` Detected vendor: ${scanResult.vendor_name}` : ''}</span>
+              : <span style={{ color: '#dc2626' }}>Scan failed: {scanResult.error}</span>}
+          </div>
+        )}
+
+        {form.document_url && (
+          <div style={{ background: '#f0f9ff', borderRadius: 8, padding: '10px 14px', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: 13, color: NAVY, fontWeight: 600 }}>📎 Document attached</span>
+            <a href={form.document_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: BLUE, fontWeight: 600, textDecoration: 'none' }}>View →</a>
+          </div>
+        )}
+
         {error && <div style={{ background: '#fee2e2', color: '#dc2626', padding: '10px 14px', borderRadius: 8, marginBottom: 16, fontSize: 13 }}>{error}</div>}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
           <div style={{ gridColumn: '1 / -1' }}>
@@ -418,6 +481,10 @@ export default function Contracts() {
                       </div>
                       {/* Actions */}
                       <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                        {c.document_url && (
+                          <a href={c.document_url} target="_blank" rel="noopener noreferrer"
+                            style={{ background: '#f0f9ff', color: BLUE, border: 'none', borderRadius: 7, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer', textDecoration: 'none' }}>📎 View</a>
+                        )}
                         <button onClick={() => { setEditing(c); setShowForm(true); }}
                           style={{ background: '#f1f5f9', color: NAVY, border: 'none', borderRadius: 7, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Edit</button>
                         <button onClick={() => handleDelete(c.id)}
