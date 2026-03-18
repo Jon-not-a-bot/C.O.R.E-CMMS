@@ -40,13 +40,13 @@ router.get('/:id', async (req, res) => {
 router.post('/', async (req, res) => {
   const db = req.app.locals.db;
   try {
-    const { name, vendor_id, asset_id, type, status, start_date, end_date, notice_period_days, auto_renew, value, notes } = req.body;
+    const { name, vendor_id, asset_id, type, status, start_date, end_date, notice_period_days, auto_renew, value, notes, document_url } = req.body;
     const result = await db.query(`
-      INSERT INTO contracts (name, vendor_id, asset_id, type, status, start_date, end_date, notice_period_days, auto_renew, value, notes)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *
+      INSERT INTO contracts (name, vendor_id, asset_id, type, status, start_date, end_date, notice_period_days, auto_renew, value, notes, document_url)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *
     `, [name, vendor_id || null, asset_id || null, type || 'Service', status || 'Active',
         start_date || null, end_date || null, notice_period_days || 30,
-        auto_renew || false, value || null, notes || '']);
+        auto_renew || false, value || null, notes || '', document_url || null]);
     res.status(201).json(result.rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -55,14 +55,14 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   const db = req.app.locals.db;
   try {
-    const { name, vendor_id, asset_id, type, status, start_date, end_date, notice_period_days, auto_renew, value, notes } = req.body;
+    const { name, vendor_id, asset_id, type, status, start_date, end_date, notice_period_days, auto_renew, value, notes, document_url } = req.body;
     const result = await db.query(`
       UPDATE contracts SET name=$1, vendor_id=$2, asset_id=$3, type=$4, status=$5,
-        start_date=$6, end_date=$7, notice_period_days=$8, auto_renew=$9, value=$10, notes=$11, updated_at=NOW()
-      WHERE id=$12 RETURNING *
+        start_date=$6, end_date=$7, notice_period_days=$8, auto_renew=$9, value=$10, notes=$11, document_url=$12, updated_at=NOW()
+      WHERE id=$13 RETURNING *
     `, [name, vendor_id || null, asset_id || null, type || 'Service', status || 'Active',
         start_date || null, end_date || null, notice_period_days || 30,
-        auto_renew || false, value || null, notes || '', req.params.id]);
+        auto_renew || false, value || null, notes || '', document_url || null, req.params.id]);
     res.json(result.rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
