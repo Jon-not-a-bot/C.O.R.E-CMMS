@@ -50,15 +50,15 @@ router.post('/', upload.single('document'), async (req, res) => {
         type: 'text',
         text: `Extract contract information from this document. Return ONLY a valid JSON object with these exact fields (use null for anything not found):
 {
-  "name": "descriptive contract name",
-  "type": "one of: Rental, Lease, Service Agreement, Maintenance, Warranty, SLA, Insurance, Other",
-  "vendor_name": "vendor or company name",
-  "value": numeric annual dollar value or null,
+  "name": "descriptive contract name including equipment and parties",
+  "type": "classify as one of: Rental, Lease, Service Agreement, Maintenance, Warranty, SLA, Insurance, Other — if document says rental or rent use Rental",
+  "vendor_name": "vendor or company providing the service/equipment",
+  "value": numeric ANNUAL dollar value (if monthly rate found, multiply by 12), or null,
   "start_date": "YYYY-MM-DD or null",
   "end_date": "YYYY-MM-DD or null",
-  "notice_period_days": numeric days notice required or null,
+  "notice_period_days": numeric days notice required for cancellation or null,
   "auto_renew": true or false,
-  "notes": "key terms, important clauses, renewal conditions in 1-2 sentences"
+  "notes": "key terms in 2-3 sentences: monthly rate, payment terms, key obligations, cancellation terms"
 }
 Return ONLY the JSON, no markdown, no explanation.`
       }
@@ -71,15 +71,15 @@ Return ONLY the JSON, no markdown, no explanation.`
         type: 'text',
         text: `Extract contract information from this document image. Return ONLY a valid JSON object with these exact fields (use null for anything not found):
 {
-  "name": "descriptive contract name",
-  "type": "one of: Rental, Lease, Service Agreement, Maintenance, Warranty, SLA, Insurance, Other",
-  "vendor_name": "vendor or company name",
-  "value": numeric annual dollar value or null,
+  "name": "descriptive contract name including equipment and parties",
+  "type": "classify as one of: Rental, Lease, Service Agreement, Maintenance, Warranty, SLA, Insurance, Other — if document says rental or rent use Rental",
+  "vendor_name": "vendor or company providing the service/equipment",
+  "value": numeric ANNUAL dollar value (if monthly rate found, multiply by 12), or null,
   "start_date": "YYYY-MM-DD or null",
   "end_date": "YYYY-MM-DD or null",
-  "notice_period_days": numeric days notice required or null,
+  "notice_period_days": numeric days notice required for cancellation or null,
   "auto_renew": true or false,
-  "notes": "key terms, important clauses, renewal conditions in 1-2 sentences"
+  "notes": "key terms in 2-3 sentences: monthly rate, payment terms, key obligations, cancellation terms"
 }
 Return ONLY the JSON, no markdown, no explanation.`
       }
