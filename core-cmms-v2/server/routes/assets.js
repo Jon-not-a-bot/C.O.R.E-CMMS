@@ -4,7 +4,6 @@ const cloudinary = require('cloudinary').v2;
 const multer = require('multer');
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
 
-// Cloudinary config
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
@@ -62,7 +61,8 @@ router.post('/', upload.array('photos', 10), async (req, res) => {
       asset_id, name, category, subcategory, location, criticality,
       manufacturer, model, serial_number, install_date, condition,
       pm_frequency, last_pm_date, next_pm_date, assigned_tech,
-      management_type, vendor_name, notes, warranty_expiry
+      management_type, vendor_name, notes, warranty_expiry,
+      purchase_date, purchase_cost, year
     } = req.body;
 
     const photos = req.files ? req.files.map(f => f.path) : [];
@@ -72,15 +72,17 @@ router.post('/', upload.array('photos', 10), async (req, res) => {
         asset_id, name, category, subcategory, location, criticality,
         manufacturer, model, serial_number, install_date, condition,
         pm_frequency, last_pm_date, next_pm_date, assigned_tech,
-        management_type, vendor_name, notes, warranty_expiry, photos
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+        management_type, vendor_name, notes, warranty_expiry, photos,
+        purchase_date, purchase_cost, year
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
       RETURNING *
     `, [
-      asset_id, name, category, subcategory, location, criticality,
+      asset_id || null, name, category, subcategory, location, criticality,
       manufacturer, model, serial_number, install_date || null, condition,
       pm_frequency, last_pm_date || null, next_pm_date || null, assigned_tech,
       management_type, vendor_name, notes, warranty_expiry || null,
-      JSON.stringify(photos)
+      JSON.stringify(photos),
+      purchase_date || null, purchase_cost || null, year || null
     ]);
 
     res.status(201).json(result.rows[0]);
@@ -101,12 +103,25 @@ router.put('/:id', upload.array('photos', 10), async (req, res) => {
       asset_id, name, category, subcategory, location, criticality,
       manufacturer, model, serial_number, install_date, condition,
       pm_frequency, last_pm_date, next_pm_date, assigned_tech,
-      management_type, vendor_name, notes, warranty_expiry
+      management_type, vendor_name, notes, warranty_expiry,
+      purchase_date, purchase_cost, year
     } = req.body;
 
     const existingPhotos = current.photos || [];
     const newPhotos = req.files ? req.files.map(f => f.path) : [];
     const allPhotos = [...existingPhotos, ...newPhotos];
+
+    // Only update asset_id if it changed AND is not already taken by another asset
+    const newAssetId = asset_id || null;
+    if (newAssetId && newAssetId !== current.asset_id) {
+      const conflict = await db.query(
+        'SELECT id FROM assets WHERE asset_id = $1 AND id != $2',
+        [newAssetId, req.params.id]
+      );
+      if (conflict.rows.length > 0) {
+        return res.status(400).json({ error: `Asset ID "${newAssetId}" is already in use by another asset.` });
+      }
+    }
 
     const result = await db.query(`
       UPDATE assets SET
@@ -114,14 +129,17 @@ router.put('/:id', upload.array('photos', 10), async (req, res) => {
         manufacturer=$7, model=$8, serial_number=$9, install_date=$10, condition=$11,
         pm_frequency=$12, last_pm_date=$13, next_pm_date=$14, assigned_tech=$15,
         management_type=$16, vendor_name=$17, notes=$18, warranty_expiry=$19, photos=$20,
+        purchase_date=$21, purchase_cost=$22, year=$23,
         updated_at=NOW()
-      WHERE id=$21 RETURNING *
+      WHERE id=$24 RETURNING *
     `, [
-      asset_id, name, category, subcategory, location, criticality,
+      newAssetId, name, category, subcategory, location, criticality,
       manufacturer, model, serial_number, install_date || null, condition,
       pm_frequency, last_pm_date || null, next_pm_date || null, assigned_tech,
       management_type, vendor_name, notes, warranty_expiry || null,
-      JSON.stringify(allPhotos), req.params.id
+      JSON.stringify(allPhotos),
+      purchase_date || null, purchase_cost || null, year || null,
+      req.params.id
     ]);
 
     res.json(result.rows[0]);
