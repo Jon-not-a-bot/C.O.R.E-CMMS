@@ -48,12 +48,14 @@ const vendorsRouter = require('./routes/vendors');
 const pmTemplatesRouter = require('./routes/pm-templates');
 const usersRouter = require('./routes/users');
 const contractsRouter = require('./routes/contracts');
+const scanContractRouter = require('./routes/scan-contract');
 
 app.use('/api/auth', authRouter);
 
 app.use('/api/assets', requireAuth, assetsRouter);
 app.use('/api/scan-nameplate', requireAuth, scanRouter);
 app.use('/api/scan-vendor-contact', requireAuth, scanVendorRouter);
+app.use('/api/scan-contract', requireAuth, scanContractRouter);
 app.use('/api/vendors', requireAuth, vendorsRouter);
 app.use('/api/pm-templates', requireAuth, pmTemplatesRouter);
 app.use('/api/users', requireAuth, usersRouter);
