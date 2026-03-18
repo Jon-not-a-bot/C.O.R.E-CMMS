@@ -7,9 +7,10 @@ const NAVY = '#1B2D4F';
 const BLUE = '#3AACDC';
 
 const CATEGORIES = ['PIT Fleet', 'Dock Equipment', 'HVAC & Heating', 'Electrical', 'Life Safety', 'Building Envelope', 'Utilities', 'General'];
-const LOCATIONS = ['Production Floor', 'Dock Area', 'Office', 'Roof', 'Exterior', 'Mechanical Room', 'Break Room', 'Parking Lot', 'Throughout'];
+const LOCATIONS = ['Production Floor', 'Dock Area', 'Dock Yard', 'Office', 'Administrative Office', 'Employee Support Office', 'Restrooms', 'Electrical Room', 'Roof', 'Exterior', 'Mechanical Room', 'Break Room', 'Parking Lot', 'Throughout'];
 const CONDITIONS = ['Excellent', 'Good', 'Fair', 'Poor', 'Critical'];
 const PM_FREQUENCIES = ['Weekly', 'Monthly', 'Quarterly', 'Semi-Annual', 'Annual', 'As Needed'];
+const CONTRACT_TYPES = ['Rental', 'Lease', 'Service Agreement', 'Maintenance', 'SLA', 'Insurance', 'Other'];
 
 const inputStyle = { padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 14, outline: 'none', background: '#fff', width: '100%', boxSizing: 'border-box' };
 
@@ -44,6 +45,22 @@ export default function AssetForm() {
     warranty_expiry: '', pm_frequency: 'Monthly', last_pm_date: '',
     next_pm_date: '', notes: ''
   });
+
+  // Warranty state
+  const [addWarranty, setAddWarranty] = useState(false);
+  const [warranty, setWarranty] = useState({
+    expiry: '', coverage: '', claim_contact: '', claim_phone: '', notice_period_days: 30
+  });
+
+  // Contract state
+  const [addContract, setAddContract] = useState(false);
+  const [contract, setContract] = useState({
+    name: '', type: 'Rental', vendor_id: '', start_date: '', end_date: '',
+    notice_period_days: 30, auto_renew: false, value: '', notes: ''
+  });
+
+  const [vendors, setVendors] = useState([]);
+  const [existingContracts, setExistingContracts] = useState([]);
   const [photos, setPhotos] = useState([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -51,6 +68,7 @@ export default function AssetForm() {
   const [scanResult, setScanResult] = useState(null);
 
   useEffect(() => {
+    authFetch(`${API}/api/vendors`).then(r => r.json()).then(d => setVendors(Array.isArray(d) ? d : [])).catch(() => {});
     if (isEdit) {
       authFetch(`${API}/api/assets/${id}`)
         .then(r => r.json())
@@ -70,23 +88,28 @@ export default function AssetForm() {
           });
         })
         .catch(() => setError('Failed to load asset.'));
+      // Load existing contracts for this asset
+      authFetch(`${API}/api/contracts`)
+        .then(r => r.json())
+        .then(d => {
+          if (Array.isArray(d)) setExistingContracts(d.filter(c => String(c.asset_id) === String(id)));
+        }).catch(() => {});
     }
   }, [id, isEdit]);
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const setW = (k, v) => setWarranty(w => ({ ...w, [k]: v }));
+  const setC = (k, v) => setContract(c => ({ ...c, [k]: v }));
 
   const handleScan = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    setScanning(true);
-    setScanResult(null);
+    setScanning(true); setScanResult(null);
     try {
       const formData = new FormData();
       formData.append('image', file);
       const res = await fetch(`${API}/api/scan-nameplate`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData
+        method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: formData
       });
       const data = await res.json();
       if (!res.ok || !data.fields) throw new Error(data.error || 'Scan failed');
@@ -100,9 +123,7 @@ export default function AssetForm() {
         notes: f.notes ? (prev.notes ? prev.notes + '\n' + f.notes : f.notes) : prev.notes,
       }));
       setScanResult({ success: true, fields: f });
-    } catch (err) {
-      setScanResult({ success: false, error: err.message });
-    }
+    } catch (err) { setScanResult({ success: false, error: err.message }); }
     setScanning(false);
   };
 
@@ -123,10 +144,54 @@ export default function AssetForm() {
       }
       if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || 'Save failed'); }
       const saved = await res.json();
-      navigate(`/assets/${saved.id || id}`);
+      const assetId = saved.id || id;
+
+      // Create warranty contract if filled out
+      if (addWarranty && warranty.expiry) {
+        const warrantyPayload = {
+          name: `${form.name} — Manufacturer Warranty`,
+          asset_id: assetId,
+          type: 'Warranty',
+          status: 'Active',
+          end_date: warranty.expiry,
+          notice_period_days: warranty.notice_period_days || 30,
+          notes: [
+            warranty.coverage ? `Coverage: ${warranty.coverage}` : '',
+            warranty.claim_contact ? `Claim contact: ${warranty.claim_contact}` : '',
+            warranty.claim_phone ? `Phone: ${warranty.claim_phone}` : '',
+          ].filter(Boolean).join('\n'),
+        };
+        await authFetch(`${API}/api/contracts`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(warrantyPayload)
+        });
+      }
+
+      // Create contract if filled out
+      if (addContract && contract.name.trim()) {
+        const contractPayload = {
+          ...contract,
+          asset_id: assetId,
+          vendor_id: contract.vendor_id || null,
+          start_date: contract.start_date || null,
+          end_date: contract.end_date || null,
+        };
+        await authFetch(`${API}/api/contracts`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(contractPayload)
+        });
+      }
+
+      navigate(`/assets/${assetId}`);
     } catch (err) { setError(err.message); }
     setSaving(false);
   };
+
+  // Notice date preview
+  const warrantyNotice = warranty.expiry && warranty.notice_period_days
+    ? new Date(new Date(warranty.expiry) - warranty.notice_period_days * 86400000).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+    : null;
+  const contractNotice = contract.end_date && contract.notice_period_days
+    ? new Date(new Date(contract.end_date) - contract.notice_period_days * 86400000).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+    : null;
 
   return (
     <div>
@@ -161,7 +226,7 @@ export default function AssetForm() {
         </div>
       )}
 
-      {/* Criticality selector */}
+      {/* Criticality */}
       <div style={{ background: '#fff', borderRadius: 12, padding: 24, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', marginBottom: 20 }}>
         <h3 style={{ fontSize: 15, fontWeight: 700, color: NAVY, marginBottom: 16 }}>Criticality Rating</h3>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12 }}>
@@ -222,7 +287,7 @@ export default function AssetForm() {
         <Field label="Purchase Cost ($)">
           <input style={inputStyle} value={form.purchase_cost} onChange={e => set('purchase_cost', e.target.value)} placeholder="e.g. 24500" type="number" min="0" />
         </Field>
-        <Field label="Warranty Expiry">
+        <Field label="Warranty Expiry" hint="Simple date only — use the Warranty section below for full details">
           <input type="date" style={inputStyle} value={form.warranty_expiry} onChange={e => set('warranty_expiry', e.target.value)} />
         </Field>
       </Section>
@@ -241,6 +306,136 @@ export default function AssetForm() {
         </Field>
       </Section>
 
+      {/* Existing contracts on edit */}
+      {isEdit && existingContracts.length > 0 && (
+        <div style={{ background: '#fff', borderRadius: 12, padding: 24, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', marginBottom: 20 }}>
+          <h3 style={{ fontSize: 15, fontWeight: 700, color: NAVY, marginBottom: 16 }}>Attached Contracts & Warranties</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {existingContracts.map(c => {
+              const end = c.end_date ? new Date(c.end_date + 'T12:00:00') : null;
+              const now = new Date();
+              const daysLeft = end ? Math.ceil((end - now) / (1000 * 60 * 60 * 24)) : null;
+              const color = !end ? '#94a3b8' : end < now ? '#ef4444' : daysLeft <= 90 ? '#f59e0b' : '#22c55e';
+              return (
+                <div key={c.id} style={{ background: '#f8fafc', borderRadius: 10, padding: '12px 16px', borderLeft: `4px solid ${color}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: NAVY }}>{c.name}</div>
+                    <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
+                      {c.type}{c.vendor_name ? ` · ${c.vendor_name}` : ''}
+                      {end && ` · Expires ${end.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`}
+                      {daysLeft !== null && daysLeft > 0 && ` (${daysLeft}d)`}
+                      {daysLeft !== null && daysLeft <= 0 && ' — Expired'}
+                    </div>
+                  </div>
+                  <span style={{ background: color + '20', color, fontSize: 11, fontWeight: 600, padding: '2px 10px', borderRadius: 20 }}>
+                    {!end ? 'No expiry' : end < now ? 'Expired' : daysLeft <= 90 ? 'Expiring soon' : 'Active'}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Warranty Section */}
+      <div style={{ background: '#fff', borderRadius: 12, padding: 24, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', marginBottom: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: addWarranty ? 20 : 0 }}>
+          <div>
+            <h3 style={{ fontSize: 15, fontWeight: 700, color: NAVY, margin: 0 }}>Manufacturer Warranty</h3>
+            <div style={{ fontSize: 13, color: '#94a3b8', marginTop: 4 }}>Creates a warranty contract record linked to this asset</div>
+          </div>
+          <div onClick={() => setAddWarranty(a => !a)}
+            style={{ width: 44, height: 24, borderRadius: 12, background: addWarranty ? BLUE : '#e2e8f0', cursor: 'pointer', position: 'relative', transition: 'background 0.2s' }}>
+            <div style={{ width: 18, height: 18, borderRadius: 9, background: '#fff', position: 'absolute', top: 3, left: addWarranty ? 23 : 3, transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
+          </div>
+        </div>
+        {addWarranty && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16, paddingTop: 4, borderTop: '2px solid #f1f5f9' }}>
+            <Field label="Warranty Expiry Date" required>
+              <input type="date" style={inputStyle} value={warranty.expiry} onChange={e => setW('expiry', e.target.value)} />
+            </Field>
+            <Field label="Notice Period (days)" hint="How early to flag for renewal decision">
+              <input type="number" style={inputStyle} value={warranty.notice_period_days} onChange={e => setW('notice_period_days', parseInt(e.target.value))} min={0} />
+            </Field>
+            <Field label="Coverage Notes">
+              <input style={inputStyle} value={warranty.coverage} onChange={e => setW('coverage', e.target.value)} placeholder="e.g. Parts and labor, 3 years" />
+            </Field>
+            <Field label="Claim Contact">
+              <input style={inputStyle} value={warranty.claim_contact} onChange={e => setW('claim_contact', e.target.value)} placeholder="Name or department" />
+            </Field>
+            <Field label="Claim Phone">
+              <input style={inputStyle} value={warranty.claim_phone} onChange={e => setW('claim_phone', e.target.value)} placeholder="1-800-xxx-xxxx" />
+            </Field>
+            {warrantyNotice && (
+              <div style={{ display: 'flex', alignItems: 'center' }}>
+                <div style={{ background: '#f0f9ff', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: BLUE, width: '100%' }}>
+                  📋 Notice deadline: <strong>{warrantyNotice}</strong>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Contract Section */}
+      <div style={{ background: '#fff', borderRadius: 12, padding: 24, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', marginBottom: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: addContract ? 20 : 0 }}>
+          <div>
+            <h3 style={{ fontSize: 15, fontWeight: 700, color: NAVY, margin: 0 }}>Contract / Rental Agreement</h3>
+            <div style={{ fontSize: 13, color: '#94a3b8', marginTop: 4 }}>Rental, lease, service agreement, or any other contract tied to this asset</div>
+          </div>
+          <div onClick={() => setAddContract(a => !a)}
+            style={{ width: 44, height: 24, borderRadius: 12, background: addContract ? BLUE : '#e2e8f0', cursor: 'pointer', position: 'relative', transition: 'background 0.2s' }}>
+            <div style={{ width: 18, height: 18, borderRadius: 9, background: '#fff', position: 'absolute', top: 3, left: addContract ? 23 : 3, transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
+          </div>
+        </div>
+        {addContract && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16, paddingTop: 4, borderTop: '2px solid #f1f5f9' }}>
+            <Field label="Contract Name" required hint="e.g. Forklift #3 Rental Agreement">
+              <input style={inputStyle} value={contract.name} onChange={e => setC('name', e.target.value)} placeholder="e.g. Forklift #3 — Yale Rental" />
+            </Field>
+            <Field label="Contract Type">
+              <select style={inputStyle} value={contract.type} onChange={e => setC('type', e.target.value)}>
+                {CONTRACT_TYPES.map(t => <option key={t}>{t}</option>)}
+              </select>
+            </Field>
+            <Field label="Vendor">
+              <select style={inputStyle} value={contract.vendor_id} onChange={e => setC('vendor_id', e.target.value)}>
+                <option value="">— No vendor —</option>
+                {vendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+              </select>
+            </Field>
+            <Field label="Annual Value ($)">
+              <input type="number" style={inputStyle} value={contract.value} onChange={e => setC('value', e.target.value)} placeholder="0.00" />
+            </Field>
+            <Field label="Start Date">
+              <input type="date" style={inputStyle} value={contract.start_date} onChange={e => setC('start_date', e.target.value)} />
+            </Field>
+            <Field label="Expiration Date">
+              <input type="date" style={inputStyle} value={contract.end_date} onChange={e => setC('end_date', e.target.value)} />
+            </Field>
+            <Field label="Notice Period (days)">
+              <input type="number" style={inputStyle} value={contract.notice_period_days} onChange={e => setC('notice_period_days', parseInt(e.target.value))} min={0} />
+            </Field>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, alignSelf: 'end', paddingBottom: 6 }}>
+              <input type="checkbox" id="auto_renew" checked={contract.auto_renew} onChange={e => setC('auto_renew', e.target.checked)} style={{ width: 16, height: 16 }} />
+              <label htmlFor="auto_renew" style={{ fontSize: 14, color: '#374151' }}>Auto-renews</label>
+            </div>
+            {contractNotice && (
+              <div style={{ display: 'flex', alignItems: 'center' }}>
+                <div style={{ background: '#f0f9ff', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: BLUE, width: '100%' }}>
+                  📋 Notice deadline: <strong>{contractNotice}</strong>
+                </div>
+              </div>
+            )}
+            <Field label="Notes" hint="Key terms, renewal conditions, etc.">
+              <textarea style={{ ...inputStyle, minHeight: 70, resize: 'vertical', fontFamily: 'inherit' }} value={contract.notes} onChange={e => setC('notes', e.target.value)} placeholder="Key terms, conditions..." />
+            </Field>
+          </div>
+        )}
+      </div>
+
+      {/* Notes */}
       <div style={{ background: '#fff', borderRadius: 12, padding: 24, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', marginBottom: 20 }}>
         <h3 style={{ fontSize: 15, fontWeight: 700, color: NAVY, marginBottom: 16 }}>Notes</h3>
         <textarea value={form.notes} onChange={e => set('notes', e.target.value)}
