@@ -37,6 +37,7 @@ export default function AssetForm() {
   const { authFetch, token } = useAuth();
   const isEdit = Boolean(id);
   const scanInputRef = useRef();
+  const contractScanInputRef = useRef();
 
   const [form, setForm] = useState({
     name: '', asset_id: '', category: 'General', location: 'Production Floor',
@@ -56,8 +57,10 @@ export default function AssetForm() {
   const [addContract, setAddContract] = useState(false);
   const [contract, setContract] = useState({
     name: '', type: 'Rental', vendor_id: '', start_date: '', end_date: '',
-    notice_period_days: 30, auto_renew: false, value: '', notes: ''
+    notice_period_days: 30, auto_renew: false, value: '', notes: '', document_url: ''
   });
+  const [contractScanning, setContractScanning] = useState(false);
+  const [contractScanResult, setContractScanResult] = useState(null);
 
   const [vendors, setVendors] = useState([]);
   const [existingContracts, setExistingContracts] = useState([]);
@@ -125,6 +128,36 @@ export default function AssetForm() {
       setScanResult({ success: true, fields: f });
     } catch (err) { setScanResult({ success: false, error: err.message }); }
     setScanning(false);
+  };
+
+  const handleContractScan = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setContractScanning(true); setContractScanResult(null);
+    try {
+      const formData = new FormData();
+      formData.append('document', file);
+      const res = await authFetch(`${API}/api/scan-contract`, { method: 'POST', body: formData });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Scan failed');
+      const f = data.fields;
+      setContract(prev => ({
+        ...prev,
+        name: f.name || prev.name || (form.name ? `${form.name} — ${f.type || 'Contract'}` : prev.name),
+        type: f.type || prev.type,
+        value: f.value || prev.value,
+        start_date: f.start_date || prev.start_date,
+        end_date: f.end_date || prev.end_date,
+        notice_period_days: f.notice_period_days || prev.notice_period_days,
+        auto_renew: f.auto_renew !== undefined ? f.auto_renew : prev.auto_renew,
+        notes: f.notes ? (prev.notes ? prev.notes + '\n\n' + f.notes : f.notes) : prev.notes,
+        document_url: data.document_url || prev.document_url,
+      }));
+      setContractScanResult({ success: true, vendor_name: f.vendor_name });
+      // Auto-enable the contract section if not already on
+      setAddContract(true);
+    } catch (err) { setContractScanResult({ success: false, error: err.message }); }
+    setContractScanning(false);
   };
 
   const submit = async () => {
@@ -391,6 +424,33 @@ export default function AssetForm() {
         </div>
         {addContract && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16, paddingTop: 4, borderTop: '2px solid #f1f5f9' }}>
+            {/* Contract scan banner */}
+            <div style={{ gridColumn: '1 / -1', background: NAVY, borderRadius: 10, padding: '12px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <div>
+                <div style={{ color: '#fff', fontWeight: 700, fontSize: 13 }}>📄 Upload Contract Document</div>
+                <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 2 }}>PDF or photo — AI auto-fills fields from the document</div>
+              </div>
+              <div>
+                <input ref={contractScanInputRef} type="file" accept="image/*,.pdf" onChange={handleContractScan} style={{ display: 'none' }} />
+                <button onClick={() => contractScanInputRef.current.click()} disabled={contractScanning}
+                  style={{ background: contractScanning ? '#64748b' : BLUE, color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 700, cursor: contractScanning ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap' }}>
+                  {contractScanning ? 'Scanning...' : 'Upload & Scan'}
+                </button>
+              </div>
+            </div>
+            {contractScanResult && (
+              <div style={{ gridColumn: '1 / -1', background: contractScanResult.success ? '#f0fdf4' : '#fef2f2', border: `1px solid ${contractScanResult.success ? '#bbf7d0' : '#fecaca'}`, borderRadius: 8, padding: '10px 14px', fontSize: 13 }}>
+                {contractScanResult.success
+                  ? <span style={{ color: '#16a34a', fontWeight: 700 }}>✓ Contract scanned — fields auto-filled.{contractScanResult.vendor_name ? ` Detected vendor: ${contractScanResult.vendor_name}` : ''}</span>
+                  : <span style={{ color: '#dc2626' }}>Scan failed: {contractScanResult.error}</span>}
+              </div>
+            )}
+            {contract.document_url && (
+              <div style={{ gridColumn: '1 / -1', background: '#f0f9ff', borderRadius: 8, padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: 13, color: NAVY, fontWeight: 600 }}>📎 Document attached</span>
+                <a href={contract.document_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: BLUE, fontWeight: 600, textDecoration: 'none' }}>View →</a>
+              </div>
+            )}
             <Field label="Contract Name" required hint="e.g. Forklift #3 Rental Agreement">
               <input style={inputStyle} value={contract.name} onChange={e => setC('name', e.target.value)} placeholder="e.g. Forklift #3 — Yale Rental" />
             </Field>
