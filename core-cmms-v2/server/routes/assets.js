@@ -62,7 +62,7 @@ router.post('/', upload.array('photos', 10), async (req, res) => {
       manufacturer, model, serial_number, install_date, condition,
       pm_frequency, last_pm_date, next_pm_date, assigned_tech,
       management_type, vendor_name, notes, warranty_expiry,
-      purchase_date, purchase_cost, year
+      purchase_date, purchase_cost, year, ownership
     } = req.body;
 
     const photos = req.files ? req.files.map(f => f.path) : [];
@@ -73,8 +73,8 @@ router.post('/', upload.array('photos', 10), async (req, res) => {
         manufacturer, model, serial_number, install_date, condition,
         pm_frequency, last_pm_date, next_pm_date, assigned_tech,
         management_type, vendor_name, notes, warranty_expiry, photos,
-        purchase_date, purchase_cost, year
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
+        purchase_date, purchase_cost, year, ownership
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
       RETURNING *
     `, [
       asset_id || null, name, category, subcategory, location, criticality,
@@ -82,7 +82,7 @@ router.post('/', upload.array('photos', 10), async (req, res) => {
       pm_frequency, last_pm_date || null, next_pm_date || null, assigned_tech,
       management_type, vendor_name, notes, warranty_expiry || null,
       JSON.stringify(photos),
-      purchase_date || null, purchase_cost || null, year || null
+      purchase_date || null, purchase_cost || null, year || null, ownership || 'Owned'
     ]);
 
     res.status(201).json(result.rows[0]);
@@ -104,7 +104,7 @@ router.put('/:id', upload.array('photos', 10), async (req, res) => {
       manufacturer, model, serial_number, install_date, condition,
       pm_frequency, last_pm_date, next_pm_date, assigned_tech,
       management_type, vendor_name, notes, warranty_expiry,
-      purchase_date, purchase_cost, year
+      purchase_date, purchase_cost, year, ownership
     } = req.body;
 
     const existingPhotos = current.photos || [];
@@ -129,16 +129,16 @@ router.put('/:id', upload.array('photos', 10), async (req, res) => {
         manufacturer=$7, model=$8, serial_number=$9, install_date=$10, condition=$11,
         pm_frequency=$12, last_pm_date=$13, next_pm_date=$14, assigned_tech=$15,
         management_type=$16, vendor_name=$17, notes=$18, warranty_expiry=$19, photos=$20,
-        purchase_date=$21, purchase_cost=$22, year=$23,
+        purchase_date=$21, purchase_cost=$22, year=$23, ownership=$24,
         updated_at=NOW()
-      WHERE id=$24 RETURNING *
+      WHERE id=$25 RETURNING *
     `, [
       newAssetId, name, category, subcategory, location, criticality,
       manufacturer, model, serial_number, install_date || null, condition,
       pm_frequency, last_pm_date || null, next_pm_date || null, assigned_tech,
       management_type, vendor_name, notes, warranty_expiry || null,
       JSON.stringify(allPhotos),
-      purchase_date || null, purchase_cost || null, year || null,
+      purchase_date || null, purchase_cost || null, year || null, ownership || 'Owned',
       req.params.id
     ]);
 
