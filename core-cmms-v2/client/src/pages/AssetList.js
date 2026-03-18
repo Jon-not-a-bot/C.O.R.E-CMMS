@@ -67,7 +67,7 @@ export default function AssetList() {
     if (toExport.length === 0) return;
 
     const headers = [
-      'Asset ID', 'Name', 'Category', 'Location', 'Condition', 'Criticality',
+      'Asset ID', 'Name', 'Category', 'Location', 'Condition', 'Criticality', 'Ownership',
       'Manufacturer', 'Model', 'Serial Number', 'Year',
       'Purchase Date', 'Purchase Cost ($)', 'Warranty Expiry',
       'PM Frequency', 'Last PM Date', 'Next PM Date',
@@ -89,7 +89,7 @@ export default function AssetList() {
       }
 
       return [
-        a.asset_id, a.name, a.category, a.location, a.condition, a.criticality,
+        a.asset_id, a.name, a.category, a.location, a.condition, a.criticality, a.ownership || 'Owned',
         a.manufacturer, a.model, a.serial_number, a.year,
         a.purchase_date ? new Date(a.purchase_date).toLocaleDateString() : '',
         a.purchase_cost,
