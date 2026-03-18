@@ -35,7 +35,8 @@ router.post('/', upload.single('document'), async (req, res) => {
       // Fetch the PDF from Cloudinary and convert to base64
       const fetch = (await import('node-fetch')).default;
       const response = await fetch(documentUrl);
-      const buffer = await response.buffer();
+      const arrayBuffer = await response.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
       const base64 = buffer.toString('base64');
 
       messageContent = [
@@ -64,7 +65,8 @@ Return ONLY the JSON object, no other text.`
       // Image — fetch and base64 encode
       const fetch = (await import('node-fetch')).default;
       const response = await fetch(documentUrl);
-      const buffer = await response.buffer();
+      const arrayBuffer = await response.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
       const base64 = buffer.toString('base64');
       const mediaType = req.file.mimetype || 'image/jpeg';
 
