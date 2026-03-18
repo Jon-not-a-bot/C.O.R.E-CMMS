@@ -57,7 +57,7 @@ export default function AssetForm() {
   const [addContract, setAddContract] = useState(false);
   const [contract, setContract] = useState({
     name: '', type: 'Rental', vendor_id: '', start_date: '', end_date: '',
-    notice_period_days: 30, auto_renew: false, value: '', notes: '', document_url: ''
+    notice_period_days: 30, auto_renew: false, value: '', monthly_cost: '', notes: '', document_url: ''
   });
   const [contractScanning, setContractScanning] = useState(false);
   const [contractScanResult, setContractScanResult] = useState(null);
@@ -203,10 +203,14 @@ export default function AssetForm() {
       if (addContract && contract.name.trim()) {
         const contractPayload = {
           ...contract,
+          name: contract.name || [form.manufacturer, form.model, form.serial_number].filter(Boolean).join(' · ') || form.name,
           asset_id: assetId,
           vendor_id: contract.vendor_id || null,
           start_date: contract.start_date || null,
           end_date: contract.end_date || null,
+          notes: contract.monthly_cost
+            ? `Monthly cost: $${parseFloat(contract.monthly_cost).toLocaleString()}${contract.notes ? '\n' + contract.notes : ''}`
+            : contract.notes,
         };
         await authFetch(`${API}/api/contracts`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(contractPayload)
@@ -451,8 +455,17 @@ export default function AssetForm() {
                 <a href={contract.document_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: BLUE, fontWeight: 600, textDecoration: 'none' }}>View →</a>
               </div>
             )}
-            <Field label="Contract Name" required hint="e.g. Forklift #3 Rental Agreement">
-              <input style={inputStyle} value={contract.name} onChange={e => setC('name', e.target.value)} placeholder="e.g. Forklift #3 — Yale Rental" />
+            <Field label="Contract Name" required hint="Auto-generated from make/model/serial — edit if needed">
+              <input style={inputStyle}
+                value={contract.name}
+                onChange={e => setC('name', e.target.value)}
+                placeholder={[form.manufacturer, form.model, form.serial_number].filter(Boolean).join(' · ') || 'e.g. Hyster H80FT · U005B08756Y'} />
+              {!contract.name && (form.manufacturer || form.model || form.serial_number) && (
+                <button type="button" onClick={() => setC('name', [form.manufacturer, form.model, form.serial_number].filter(Boolean).join(' · '))}
+                  style={{ background: '#f0f9ff', color: BLUE, border: `1px solid ${BLUE}40`, borderRadius: 6, padding: '4px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer', marginTop: 4, alignSelf: 'flex-start' }}>
+                  Use {[form.manufacturer, form.model, form.serial_number].filter(Boolean).join(' · ')}
+                </button>
+              )}
             </Field>
             <Field label="Contract Type">
               <select style={inputStyle} value={contract.type} onChange={e => setC('type', e.target.value)}>
@@ -465,7 +478,12 @@ export default function AssetForm() {
                 {vendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
               </select>
             </Field>
-            <Field label="Annual Value ($)">
+            <Field label="Monthly Cost ($)" hint="Auto-calculates annual value">
+              <input type="number" style={inputStyle} value={contract.monthly_cost}
+                onChange={e => { setC('monthly_cost', e.target.value); setC('value', (parseFloat(e.target.value) * 12).toFixed(2)); }}
+                placeholder="0.00" />
+            </Field>
+            <Field label="Annual Value ($)" hint="Auto-filled from monthly cost">
               <input type="number" style={inputStyle} value={contract.value} onChange={e => setC('value', e.target.value)} placeholder="0.00" />
             </Field>
             <Field label="Start Date">
